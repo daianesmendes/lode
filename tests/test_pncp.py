@@ -94,3 +94,37 @@ def test_contracts_of_filters_suppliers_and_keeps_latest_version():
     ]
     kept = pncp.contracts_of({"11111111"}, rows)
     assert [c["updated_at"] for c in kept] == ["2026-10-05T10:00:00"]
+
+
+def test_a_failing_day_does_not_stop_the_others(tmp_path):
+    """Day 2 fails in the first round only; it must be retried and everything downloaded."""
+    state = {"day2_calls": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["dataInicial"] == "20261002":
+            state["day2_calls"] += 1
+            if state["day2_calls"] <= 3:  # all attempts of round 1
+                return httpx.Response(503)
+        return httpx.Response(200, json={"data": [record(1)], "totalPaginas": 1})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    logs = []
+    missing = pncp.download(
+        date(2026, 10, 1), date(2026, 10, 3), tmp_path, log=logs.append, client=client, attempts=3
+    )
+    assert missing == []
+    assert len(list(tmp_path.glob("*.jsonl.gz"))) == 3
+    assert any("FALHOU" in line for line in logs)
+
+
+def test_download_reports_days_still_missing(tmp_path):
+    client, _ = fake_api({}, fail_first=10_000)
+    missing = pncp.download(
+        date(2026, 10, 1),
+        date(2026, 10, 2),
+        tmp_path,
+        log=lambda _: None,
+        client=client,
+        attempts=2,
+    )
+    assert missing == [date(2026, 10, 1), date(2026, 10, 2)]

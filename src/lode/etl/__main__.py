@@ -39,8 +39,8 @@ def run_receita(args: argparse.Namespace) -> None:
 
 
 def run_pncp(args: argparse.Namespace) -> None:
-    if args.download:
-        pncp.download(args.start, args.end, args.cache, log=progress)
+    if args.download and pncp.download(args.start, args.end, args.cache, log=progress):
+        raise SystemExit("some days are still missing: run again before loading")
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
         companies = company_ids(conn)
         if not companies:

@@ -10,7 +10,7 @@ import gzip
 import json
 import time
 from collections.abc import Callable, Iterable, Iterator
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -46,7 +46,8 @@ def slim(record: dict) -> dict:
     }
 
 
-def get_page(client: httpx.Client, day: date, page: int, attempts: int = 6) -> dict:
+def get_page(client: httpx.Client, day: date, page: int, attempts: int = 9) -> dict:
+    # Waits 1, 2, 4 ... 60 s between attempts: about 4 minutes before giving up on a page.
     """One page of contracts published on `day`, retrying the API's frequent failures."""
     params = {
         "dataInicial": day.strftime("%Y%m%d"),
@@ -69,11 +70,11 @@ def get_page(client: httpx.Client, day: date, page: int, attempts: int = 6) -> d
     raise RuntimeError(f"PNCP failed for {day} page {page} after {attempts} attempts")
 
 
-def fetch_day(client: httpx.Client, day: date) -> list[dict]:
-    first = get_page(client, day, 1)
+def fetch_day(client: httpx.Client, day: date, attempts: int = 9) -> list[dict]:
+    first = get_page(client, day, 1, attempts)
     records = list(first.get("data") or [])
     for page in range(2, (first.get("totalPaginas") or 0) + 1):
-        records.extend(get_page(client, day, page).get("data") or [])
+        records.extend(get_page(client, day, page, attempts).get("data") or [])
     return [slim(r) for r in records]
 
 
@@ -88,27 +89,49 @@ def download(
     workers: int = 4,
     log: Callable[[str], None] = print,
     client: httpx.Client | None = None,
-) -> None:
-    """Download every day in [start, end] that is not cached yet."""
+    rounds: int = 2,
+    attempts: int = 9,
+) -> list[date]:
+    """Download every day in [start, end] that is not cached yet.
+
+    A day that fails does not stop the others; failed days get another round at the end.
+    Returns the days still missing (empty when everything was downloaded).
+    """
     cache.mkdir(parents=True, exist_ok=True)
     days = [start + timedelta(n) for n in range((end - start).days + 1)]
     missing = [d for d in days if not day_file(cache, d).exists()]
     log(f"{len(days) - len(missing)} dias já baixados, {len(missing)} faltando")
     client = client or httpx.Client(timeout=httpx.Timeout(30, read=120))
 
-    def one(day: date) -> str:
-        contracts = fetch_day(client, day)
+    def one(day: date) -> int:
+        contracts = fetch_day(client, day, attempts)
         target = day_file(cache, day)
         partial = target.with_suffix(".part")
         with gzip.open(partial, "wt", encoding="utf-8") as fh:
             for c in contracts:
                 fh.write(json.dumps(c, ensure_ascii=False) + "\n")
         partial.rename(target)  # a day only counts as done once fully written
-        return f"{day}: {len(contracts):,} contratos"
+        return len(contracts)
 
-    with ThreadPoolExecutor(workers) as pool:
-        for n, message in enumerate(pool.map(one, missing), 1):
-            log(f"[{n}/{len(missing)}] {message}")
+    for round_ in range(1, rounds + 1):
+        if not missing:
+            break
+        if round_ > 1:
+            log(f"rodada {round_}: tentando de novo {len(missing)} dias que falharam")
+        failed = []
+        with ThreadPoolExecutor(workers) as pool:
+            futures = {pool.submit(one, day): day for day in missing}
+            for n, future in enumerate(as_completed(futures), 1):
+                day = futures[future]
+                try:
+                    log(f"[{n}/{len(missing)}] {day}: {future.result():,} contratos")
+                except Exception as exc:  # noqa: BLE001  (any failure: retry the day later)
+                    failed.append(day)
+                    log(f"[{n}/{len(missing)}] {day}: FALHOU ({exc})")
+        missing = sorted(failed)
+    if missing:
+        log(f"{len(missing)} dias ainda faltando; rode de novo para continuar")
+    return missing
 
 
 def read_cache(cache: Path, start: date, end: date) -> Iterator[dict]:
