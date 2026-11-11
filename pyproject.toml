@@ -1,0 +1,31 @@
+[project]
+name = "lode"
+version = "0.1.0"
+description = "Finds the Brazilian software companies most likely to buy, using public company data, a scoring model and an LLM."
+authors = [
+    { name = "Daiane Mendes", email = "mendesdaiane161@gmail.com" }
+]
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.4",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.20,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F: erros e nomes indefinidos · I: ordem dos imports · UP: sintaxe moderna · B: armadilhas comuns
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

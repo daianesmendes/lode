@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets — never commit real keys
+.env
+.env.*
+!.env.example
+
+# Downloaded and generated data (gigabytes; rebuilt by the ETL)
+data/
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
