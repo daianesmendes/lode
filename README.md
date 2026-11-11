@@ -55,8 +55,8 @@ Things the data taught us:
 - **Privacy by design (LGPD).** Partner names and CPFs are never stored, only counts and age
   bands. Individual businesses carry the owner's CPF at the end of their legal name; the ETL
   strips it.
-- **Main activity only.** About as many companies list IT only as a *secondary* activity, and
-  most of them are not software companies, so they are left out.
+- **Main activity only.** About as many companies list IT only as a *secondary* activity. They
+  are left out to keep the focus on companies whose core business is IT.
 
 Run it:
 
