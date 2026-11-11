@@ -61,10 +61,15 @@ Things the data taught us:
 Run it:
 
 ```bash
-cp .env.example .env                              # point DATABASE_URL to your Postgres
-uv run python -m lode.etl --download              # latest month: download, extract, load
-uv run python -m lode.etl --month 2026-10         # files already in data/raw/2026-10
+cp .env.example .env                                  # point DATABASE_URL to your Postgres
+uv run python -m lode.etl receita --download          # latest month: download, extract, load
+uv run python -m lode.etl receita --month 2026-10     # files already in data/raw/2026-10
+uv run python -m lode.etl pncp --start 2025-11-01 --end 2026-10-31 --download
 ```
+
+The PNCP API only filters by publication date and is slow (~10 s per page of 500), so every
+contract of each day is cached in `data/pncp/` as a gzipped JSON-lines file. Downloads resume
+from the first missing day, and the cache can be filtered again if the target companies change.
 
 ## Development
 

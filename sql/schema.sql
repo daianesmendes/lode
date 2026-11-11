@@ -57,3 +57,34 @@ create table if not exists load_info (
     establishments  integer not null,
     rows_read       jsonb not null
 );
+
+-- Public contracts (PNCP) won by our companies. No foreign key to company on purpose: the
+-- monthly Receita reload recreates company, and contracts take hours to download.
+create table if not exists public_contract (
+    id             text primary key,         -- numeroControlePNCP
+    cnpj           char(14) not null,        -- supplier establishment
+    cnpj_basico    char(8) not null,
+    object         text,
+    value          numeric(18, 2),
+    signed_on      date,
+    valid_from     date,
+    valid_to       date,
+    published_at   timestamp,
+    contract_type  text,
+    category       text,
+    buyer_cnpj     char(14),
+    buyer_name     text,
+    buyer_sphere   char(1),                  -- F federal, E state, M municipal, D district
+    buyer_uf       char(2),
+    buyer_ibge     char(7)
+);
+create index if not exists public_contract_company on public_contract (cnpj_basico);
+
+create table if not exists pncp_info (
+    id               boolean primary key default true check (id),
+    period_start     date not null,
+    period_end       date not null,
+    loaded_at        timestamptz not null default now(),
+    contracts_read   integer not null,
+    contracts_kept   integer not null
+);

@@ -31,3 +31,22 @@ def test_load_replaces_previous_month(month):  # noqa: F811
         assert counts == (2, 3, "2026-10")
         mei = conn.execute("select is_mei, legal_name from company where cnpj_basico = '55555555'")
         assert mei.fetchone() == (True, "MARIA SOUZA")
+
+
+def test_load_contracts_replaces_previous_period():
+    from datetime import date
+
+    from lode.etl.load import load_contracts
+    from lode.etl.pncp import slim
+    from tests.test_pncp import record
+
+    contracts = [slim(record(1)), slim(record(2))]
+    contracts[1]["signed_on"] = "not a date"  # malformed values become NULL
+    with psycopg.connect(URL, autocommit=True) as conn:
+        for _ in range(2):
+            result = load_contracts(conn, contracts, date(2026, 10, 1), date(2026, 10, 31), 10)
+        assert result == {"contracts_read": 10, "contracts_kept": 2}
+        rows = conn.execute(
+            "select cnpj_basico, signed_on, buyer_sphere from public_contract order by id"
+        ).fetchall()
+        assert rows == [("11111111", date(2026, 9, 30), "M"), ("11111111", None, "M")]
