@@ -62,6 +62,18 @@ def test_get_page_retries_temporary_errors():
     assert calls["n"] == 3
 
 
+def test_get_page_retries_the_rate_limit_html_page():
+    """Rate limited, the API answers 200 with an HTML page; that must be retried, not parsed."""
+    answers = iter(
+        [
+            httpx.Response(200, html="<h2>Limite de requisições excedido</h2>"),
+            httpx.Response(200, json={"data": [record(1)], "totalPaginas": 1}),
+        ]
+    )
+    client = httpx.Client(transport=httpx.MockTransport(lambda _: next(answers)))
+    assert len(pncp.get_page(client, date(2026, 10, 1), 1)["data"]) == 1
+
+
 def test_get_page_gives_up_after_the_last_attempt():
     client, _ = fake_api({}, fail_first=99)
     with pytest.raises(RuntimeError):

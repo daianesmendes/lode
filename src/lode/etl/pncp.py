@@ -62,8 +62,9 @@ def get_page(client: httpx.Client, day: date, page: int, attempts: int = 9) -> d
                 return {"data": [], "totalPaginas": 0}
             if response.status_code not in RETRY_STATUS:
                 response.raise_for_status()
+                # When rate limited, the API may answer 200 with an HTML page instead of JSON.
                 return response.json()
-        except (httpx.TimeoutException, httpx.TransportError):
+        except (httpx.TimeoutException, httpx.TransportError, ValueError):
             pass
         if attempt < attempts - 1:
             time.sleep(min(2**attempt, 60))
