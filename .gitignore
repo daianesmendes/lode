@@ -17,3 +17,6 @@ data/
 .DS_Store
 .vscode/
 .idea/
+
+# Trained models and their reports (rebuilt by `python -m lode.model`)
+models/
