@@ -8,8 +8,11 @@ the future leak into the features and make the model look better than it is.
 The Receita snapshot is newer than the cutoff, so some fields can be rebuilt for the cutoff and
 some cannot:
 
-- rebuilt: company age, establishments open on the date, Simples membership (from its start
-  date), and whether the whole partner list changed after the date (``partners_changed``);
+- rebuilt: company age, establishments open on the date and Simples membership (from its start
+  date);
+- ``partners_changed`` marks companies whose whole partner list joined after the date, so their
+  partner counts describe a later company. It is a data-quality warning, not a model feature:
+  it is itself a fact from after the cutoff;
 - current values only (a known limitation): capital, size, legal nature, secondary activities,
   partner counts and age bands. The Receita publishes no history for them.
 

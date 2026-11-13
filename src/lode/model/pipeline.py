@@ -22,7 +22,11 @@ COUNTS = [
     "partners_company",
     "partners_foreign",
 ]
-FLAGS = ["hq_in_capital", "simples", "partners_changed"]
+FLAGS = ["hq_in_capital", "simples"]
+# Not a feature: `partners_changed` says the partner list changed AFTER the cutoff, which nobody
+# knew on that date. It leaked the future (winners change partners more often), so it stays in
+# the table only as a data-quality warning.
+NOT_FEATURES = ["partners_changed"]
 AGE_BANDS = ["youngest_age_band", "oldest_age_band"]  # empty when there is no partner
 CAPITAL = ["capital"]  # from R$ 0 to billions: log scale
 CATEGORIES = ["size_code", "legal_nature"]

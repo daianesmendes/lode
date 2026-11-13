@@ -56,6 +56,11 @@ def test_rare_and_unseen_legal_natures_share_the_other_column():
     assert unseen[0, columns.index(names[-1])] == 1.0
 
 
+def test_facts_from_after_the_cutoff_are_not_features():
+    prep = preprocessing().fit(to_frame([row(1), row(2)]))
+    assert not any("partners_changed" in n for n in prep.get_feature_names_out())
+
+
 def test_logistic_learns_a_probability_per_company():
     rng = np.random.default_rng(0)
     rows = [
