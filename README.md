@@ -30,7 +30,7 @@ The first version focuses on **software and IT services companies (CNAE 62) in S
 - [x] Project setup: sector definition, tests, CI
 - [x] ETL: Receita Federal open data → Postgres
 - [x] Public contracts (PNCP)
-- [ ] Scoring model with held-out evaluation
+- [ ] Scoring model with held-out evaluation (logistic baseline done; gradient boosting next)
 - [ ] API
 - [ ] Web app: map, filters, top 10
 - [ ] LLM website check + evaluation set
@@ -88,6 +88,54 @@ Things the data taught us:
   is above R$ 3.8 billion. Totals are meaningless here; medians and counts are not.
 - **Mostly city halls.** Half of the contracts come from municipalities. The API also returns a
   buyer sphere `N` (620 contracts) that its documentation does not describe; it is kept as is.
+
+## Model
+
+The question: *looking at a company on 1 November 2025, will it win a public contract in the
+next 12 months?* Features use only what was known on that date; the label is having a contract
+published in the PNCP from November 2025 to October 2026. That leaves 109,041 companies opened
+before the cutoff, of which 981 (0.9%) won.
+
+20% of the companies are held out and scored once, at the end. The regularization of the
+logistic regression is chosen by 5-fold cross-validation on the other 80%. Results on the
+21,809 held-out companies:
+
+| Ranking | PR-AUC | ROC-AUC | Precision in top 100 | Lift in top 10% |
+|---|---|---|---|---|
+| Random | 0.010 | 0.51 | 1% | 0.9× |
+| Capital only | 0.117 | 0.89 | 20% | 7.1× |
+| **Logistic regression** | **0.171** | **0.91** | **31%** | **7.7×** |
+
+Accuracy is not reported on purpose: with 0.9% of winners, "nobody wins" is 99% accurate.
+Classes are not reweighted either, so the score stays a real probability; reweighting would
+barely change the ranking and would inflate every probability.
+
+What the coefficients say: capital, company age and the number of secondary activities raise
+the chance; micro companies and headquarters in the state capital lower it (half of the
+contracts come from city halls, which seem to buy from companies outside the capital).
+
+Things we learned the hard way:
+
+- **A leak found through the coefficients.** A first version used a flag for "the whole partner
+  list changed after the cutoff". It had a positive weight: winners change partners more often
+  *after* winning. Nobody knew that on the cutoff date, so it was removed. The results barely
+  moved (it affected 1,789 companies), but a model must not see the future.
+
+Known limitations:
+
+- Capital, size, legal nature, secondary activities and partner counts are today's values: the
+  Receita publishes no history for them. A company that grew *because* it won contracts looks
+  bigger than it was on the cutoff date.
+- Only companies active in October 2026 are in the database, so companies that closed during
+  the year are missing (survivorship bias).
+- The holdout is a random split of the same year. A temporal check (train on one period, test
+  on the next) needs more than one year of PNCP data.
+
+Run it (prints the table above and saves the model to `models/`):
+
+```bash
+uv run python -m lode.model --cutoff 2025-11-01 --horizon-end 2026-11-01
+```
 
 ## Development
 
