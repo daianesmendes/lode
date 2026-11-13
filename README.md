@@ -29,7 +29,7 @@ The first version focuses on **software and IT services companies (CNAE 62) in S
 
 - [x] Project setup: sector definition, tests, CI
 - [x] ETL: Receita Federal open data → Postgres
-- [ ] Public contracts (PNCP)
+- [x] Public contracts (PNCP)
 - [ ] Scoring model with held-out evaluation
 - [ ] API
 - [ ] Web app: map, filters, top 10
@@ -70,6 +70,24 @@ uv run python -m lode.etl pncp --start 2025-11-01 --end 2026-10-31 --download
 The PNCP API only filters by publication date and is slow (~10 s per page of 500), so every
 contract of each day is cached in `data/pncp/` as a gzipped JSON-lines file. Downloads resume
 from the first missing day, and the cache can be filtered again if the target companies change.
+
+Public contracts published from **November 2025 to October 2026** (365 days):
+
+| | |
+|---|---|
+| Contracts published in the PNCP | 2,106,822 |
+| Contracts won by our companies | 9,392 |
+| Companies with at least one contract | 1,015 (0.8%) |
+| Median contract value | R$ 25,680 |
+
+Things the data taught us:
+
+- **Few winners.** Less than 1% of the companies won a public contract in a year, so the model
+  has to work with very imbalanced classes.
+- **Very skewed values.** The median contract is about R$ 26 thousand, but the largest single one
+  is above R$ 3.8 billion. Totals are meaningless here; medians and counts are not.
+- **Mostly city halls.** Half of the contracts come from municipalities. The API also returns a
+  buyer sphere `N` (620 contracts) that its documentation does not describe; it is kept as is.
 
 ## Development
 
