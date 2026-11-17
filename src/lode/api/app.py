@@ -14,7 +14,7 @@ from typing import Annotated, Literal
 
 import psycopg
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from pydantic import BaseModel
@@ -52,6 +52,53 @@ class CompanyPage(BaseModel):
 
 def company(row: dict) -> dict:
     return {**row, "size": SIZES.get(row.pop("size_code"), "not_informed")}
+
+
+class Reason(BaseModel):
+    feature: str
+    contribution: float  # to the log-odds, compared with the average company
+
+
+class Contracts(BaseModel):
+    count: int
+    total_value: float | None
+    last_published: date | None
+
+
+class CompanyDetail(Company):
+    opened_on: date | None
+    capital: float
+    legal_nature: str
+    simples: bool
+    partners: int
+    establishments: int
+    main_activity: str
+    main_activity_name: str | None
+    secondary_activities: int
+    public_contracts: Contracts  # won in the loaded PNCP period
+    reasons: list[Reason] | None  # largest effect first; none for non-linear models
+
+
+DETAIL = """
+select c.capital, c.legal_nature, c.is_simples as simples, c.partners,
+       min(e.opened_on) as opened_on, count(e.*) as establishments,
+       -- same establishment that stands for the company in the list
+       (array_agg(e.cnae_main order by e.is_headquarters desc, e.opened_on nulls last))[1]
+           as main_activity,
+       max(cardinality(e.cnaes_secondary)) as secondary_activities,
+       s.reasons
+from company_score s
+join company c using (cnpj_basico)
+join establishment e using (cnpj_basico)
+where s.cnpj_basico = %(cnpj)s
+group by c.cnpj_basico, s.cnpj_basico
+"""
+
+CONTRACTS = """
+select count(*) as count, sum(value)::float as total_value,
+       max(published_at)::date as last_published
+from public_contract where cnpj_basico = %(cnpj)s
+"""
 
 
 class Health(BaseModel):
@@ -163,6 +210,34 @@ def create_app(database_url: str | None = None) -> FastAPI:
         total = conn.execute(count, params).fetchone()["total"]
         items = [company(row) for row in rows]
         return {"total": total, "limit": limit, "offset": offset, "items": items}
+
+    @app.get("/companies/{cnpj_basico}", response_model=CompanyDetail, tags=["companies"])
+    def company_detail(
+        conn: Conn,
+        cnpj_basico: Annotated[str, Path(pattern=r"^\d{8}$", description="first 8 CNPJ digits")],
+    ):
+        """One company, its public contracts and why it got its score."""
+        params = {"cnpj": cnpj_basico}
+        row = conn.execute(COMPANIES + " where s.cnpj_basico = %(cnpj)s", params).fetchone()
+        if row is None:
+            raise HTTPException(404, "company not found")
+        detail = conn.execute(DETAIL, params).fetchone()
+        name = conn.execute(
+            "select description from cnae where code = %s", (detail["main_activity"],)
+        ).fetchone()
+        reasons = detail.pop("reasons")
+        return {
+            **company(row),
+            **detail,
+            "main_activity_name": name["description"] if name else None,
+            "public_contracts": conn.execute(CONTRACTS, params).fetchone(),
+            "reasons": None
+            if reasons is None
+            else [
+                {"feature": f, "contribution": v}
+                for f, v in sorted(reasons.items(), key=lambda kv: -abs(kv[1]))
+            ],
+        }
 
     return app
 

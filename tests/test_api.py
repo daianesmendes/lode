@@ -35,7 +35,7 @@ def db():
         conn.execute(SCHEMA.read_text())
         conn.execute(
             "truncate company_score, score_info, public_contract, pncp_info, establishment, "
-            "company, municipality, load_info"
+            "company, municipality, cnae, load_info"
         )
         yield conn
 
@@ -161,3 +161,44 @@ def test_companies_pagination(db, client):
     past_the_end = client.get("/companies", params={"offset": 10}).json()
     assert past_the_end["total"] == 3 and past_the_end["items"] == []
     assert client.get("/companies", params={"limit": 101}).status_code == 422
+
+
+def test_company_detail_explains_the_score(db, client):
+    load_companies(db)
+    db.execute("insert into cnae values ('6201501', 'Desenvolvimento de programas sob encomenda')")
+    db.execute(
+        "update company_score set reasons = %s where cnpj_basico = '11111111'",
+        ('{"capital": 2.0, "age_years": -0.4, "size_code": 0.7}',),
+    )
+    db.execute(
+        "insert into public_contract (id, cnpj, cnpj_basico, value, published_at) values "
+        "('a', '11111111000100', '11111111', 1000.50, '2026-01-10'), "
+        "('b', '11111111000100', '11111111', 2000, '2026-05-02 14:00')"
+    )
+    detail = client.get("/companies/11111111").json()
+    assert detail["legal_name"] == "ALFA SOFTWARE LTDA" and detail["rank"] == 1
+    assert detail["main_activity_name"] == "Desenvolvimento de programas sob encomenda"
+    assert detail["establishments"] == 1 and detail["opened_on"] == "2015-01-01"
+    assert detail["public_contracts"] == {
+        "count": 2,
+        "total_value": 3000.5,
+        "last_published": "2026-05-02",
+    }
+    assert detail["reasons"] == [  # largest effect first, in either direction
+        {"feature": "capital", "contribution": 2.0},
+        {"feature": "size_code", "contribution": 0.7},
+        {"feature": "age_years", "contribution": -0.4},
+    ]
+    assert not {"email", "phone1", "phone2"} & set(detail)
+
+
+def test_company_detail_without_contracts(db, client):
+    load_companies(db)
+    detail = client.get("/companies/22222222").json()
+    assert detail["public_contracts"] == {"count": 0, "total_value": None, "last_published": None}
+
+
+def test_unknown_or_malformed_company(db, client):
+    load_companies(db)
+    assert client.get("/companies/99999999").status_code == 404
+    assert client.get("/companies/1234").status_code == 422
