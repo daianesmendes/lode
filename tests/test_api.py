@@ -35,14 +35,14 @@ def db():
         conn.execute(SCHEMA.read_text())
         conn.execute(
             "truncate company_score, score_info, public_contract, pncp_info, establishment, "
-            "company, municipality, cnae, load_info"
+            "company, municipality, municipality_ibge, cnae, load_info"
         )
         yield conn
 
 
 @pytest.fixture
 def client():
-    with TestClient(create_app(URL)) as client:
+    with TestClient(create_app(URL, ["http://localhost:3000"])) as client:
         yield client
 
 
@@ -96,6 +96,7 @@ def load_companies(conn):
     """Three scored companies. B's headquarters is in another state: its São Paulo branch, the
     only establishment we have, stands for it."""
     conn.execute("insert into municipality values ('7107', 'SAO PAULO'), ('6291', 'CAMPINAS')")
+    conn.execute("insert into municipality_ibge values ('7107', '3550308', 'São Paulo')")
     for cnpj, name, size, email in [
         ("11111111", "ALFA SOFTWARE LTDA", "05", "contato@alfa.example"),
         ("22222222", "BETA SISTEMAS LTDA", "01", None),
@@ -135,10 +136,11 @@ def test_companies_come_by_rank_without_contact_data(db, client):
     assert page["total"] == 3
     assert [c["cnpj_basico"] for c in page["items"]] == ["11111111", "33333333", "22222222"]
     first = page["items"][0]
-    assert first["size"] == "other" and first["municipality"] == "SAO PAULO"
+    assert first["size"] == "other" and first["municipality"] == "São Paulo"  # official name
     assert first["trade_name"] == "ALFA TECH"
     assert not {"email", "phone1", "phone2"} & set(first)
-    assert page["items"][2]["municipality"] == "SAO PAULO"  # branch stands for the company
+    assert page["items"][2]["municipality"] == "São Paulo"  # branch stands for the company
+    assert page["items"][1]["municipality"] == "CAMPINAS"  # no IBGE match: Receita name
 
 
 def test_companies_filters(db, client):
@@ -207,7 +209,10 @@ def test_unknown_or_malformed_company(db, client):
 def test_municipalities_sum_the_probabilities(db, client):
     load_companies(db)
     cities = client.get("/municipalities").json()
-    assert [c["municipality"] for c in cities] == ["SAO PAULO", "CAMPINAS"]
+    assert [(c["municipality"], c["ibge_code"]) for c in cities] == [
+        ("São Paulo", "3550308"),
+        ("CAMPINAS", None),
+    ]
     sao_paulo = cities[0]
     assert sao_paulo["companies"] == 2
     assert sao_paulo["expected_winners"] == pytest.approx(0.91)  # 0.9 + 0.01
@@ -216,5 +221,12 @@ def test_municipalities_sum_the_probabilities(db, client):
     micro = client.get("/municipalities", params={"size": "micro"}).json()
     assert [(c["municipality"], c["companies"]) for c in micro] == [
         ("CAMPINAS", 1),
-        ("SAO PAULO", 1),
+        ("São Paulo", 1),
     ]
+
+
+def test_only_the_web_app_may_call_from_a_browser(db, client):
+    allowed = client.get("/health", headers={"Origin": "http://localhost:3000"})
+    assert allowed.headers["access-control-allow-origin"] == "http://localhost:3000"
+    other = client.get("/health", headers={"Origin": "https://example.com"})
+    assert "access-control-allow-origin" not in other.headers

@@ -15,6 +15,7 @@ from typing import Annotated, Literal
 import psycopg
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from pydantic import BaseModel
@@ -25,10 +26,11 @@ Size = Literal["not_informed", "micro", "small", "other"]
 # Trade name and city were copied into company_score at scoring time (see lode.model.score).
 COMPANIES = """
 select s.rank, s.score, c.cnpj_basico, c.legal_name, s.trade_name as trade_name,
-       s.municipality_code, mu.name as municipality, c.size_code
+       s.municipality_code, coalesce(mi.name, mu.name) as municipality, c.size_code
 from company_score s
 join company c using (cnpj_basico)
 left join municipality mu on mu.code = s.municipality_code
+left join municipality_ibge mi on mi.code = s.municipality_code
 """
 
 
@@ -103,6 +105,7 @@ from public_contract where cnpj_basico = %(cnpj)s
 
 class Municipality(BaseModel):
     municipality_code: str
+    ibge_code: str | None  # joins the city to its outline on the map
     municipality: str | None
     companies: int
     mean_score: float
@@ -115,7 +118,8 @@ class Municipality(BaseModel):
 
 
 MUNICIPALITIES = """
-select s.municipality_code, mu.name as municipality, count(*) as companies,
+select s.municipality_code, mi.ibge_code, coalesce(mi.name, mu.name) as municipality,
+       count(*) as companies,
        avg(s.score) as mean_score, sum(s.score) as expected_winners,
        (array_agg(s.cnpj_basico order by s.rank))[1] as best_cnpj_basico,
        (array_agg(c.legal_name order by s.rank))[1] as best_legal_name,
@@ -123,8 +127,9 @@ select s.municipality_code, mu.name as municipality, count(*) as companies,
 from company_score s
 join company c using (cnpj_basico)
 left join municipality mu on mu.code = s.municipality_code
+left join municipality_ibge mi on mi.code = s.municipality_code
 {where}
-group by s.municipality_code, mu.name
+group by s.municipality_code, mi.ibge_code, mi.name, mu.name
 order by expected_winners desc
 """
 
@@ -153,7 +158,10 @@ class Meta(BaseModel):
     holdout: Evaluation  # how the model did on companies it never saw
 
 
-def create_app(database_url: str | None = None) -> FastAPI:
+def create_app(database_url: str | None = None, web_origins: list[str] | None = None) -> FastAPI:
+    """`web_origins`: sites allowed to call the API from a browser (CORS). Defaults to the
+    LODE_WEB_ORIGINS variable (comma-separated), else the local web app."""
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         url = database_url
@@ -171,6 +179,10 @@ def create_app(database_url: str | None = None) -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+    if web_origins is None:
+        load_dotenv()
+        web_origins = os.environ.get("LODE_WEB_ORIGINS", "http://localhost:3000").split(",")
+    app.add_middleware(CORSMiddleware, allow_origins=web_origins, allow_methods=["GET"])
 
     def connection(request: Request) -> Iterator[psycopg.Connection]:
         with request.app.state.pool.connection() as conn:
