@@ -21,8 +21,7 @@ AGE = ["age_years"]  # 0 to ~100 years: no long tail, kept linear
 COUNTS = [
     "establishments",
     "secondary_cnaes",
-    "partners",
-    "partners_person",
+    "partners",  # = partners_person + partners_company + partners_foreign, for every company
     "partners_company",
     "partners_foreign",
 ]
@@ -30,7 +29,10 @@ FLAGS = ["hq_in_capital", "simples"]
 # Not a feature: `partners_changed` says the partner list changed AFTER the cutoff, which nobody
 # knew on that date. It leaked the future (winners change partners more often), so it stays in
 # the table only as a data-quality warning.
-NOT_FEATURES = ["partners_changed"]
+NOT_FEATURES = ["partners_changed", "partners_person"]
+# `partners_person` is left out too: the total minus companies and foreigners gives it exactly,
+# and with both in the model the logistic split one effect into a positive and a negative weight
+# (TOTVS: partners +2.3, partners_person -1.6), which made the score reasons confusing.
 AGE_BANDS = ["youngest_age_band", "oldest_age_band"]  # empty when there is no partner
 CAPITAL = ["capital"]  # from R$ 0 to billions: log scale
 CATEGORIES = ["size_code", "legal_nature"]

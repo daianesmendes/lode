@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import numpy as np
 
-from lode.model.pipeline import logistic, preprocessing, to_frame
+from lode.model.pipeline import NOT_FEATURES, logistic, preprocessing, to_frame
 
 
 def row(n, legal_nature="2062", band=4, won=False, capital="1000.00"):
@@ -56,9 +56,11 @@ def test_rare_and_unseen_legal_natures_share_the_other_column():
     assert unseen[0, columns.index(names[-1])] == 1.0
 
 
-def test_facts_from_after_the_cutoff_are_not_features():
+def test_left_out_columns_are_not_features():
+    # partners_changed: a fact from after the cutoff; partners_person: redundant with the total
     prep = preprocessing().fit(to_frame([row(1), row(2)]))
-    assert not any("partners_changed" in n for n in prep.get_feature_names_out())
+    for column in NOT_FEATURES:
+        assert not any(column in n for n in prep.get_feature_names_out())
 
 
 def test_logistic_learns_a_probability_per_company():
