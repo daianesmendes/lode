@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from sklearn.base import clone
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import average_precision_score
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
@@ -49,6 +50,7 @@ class Result:
     boosting_minus_logistic: tuple[float, float]  # paired bootstrap interval of PR-AUC
     coefficients: pd.Series
     importance: pd.Series  # PR-AUC lost when one input column is shuffled (boosting)
+    final_model: Pipeline  # the chosen model refit on every labeled row, used for scoring
 
 
 def fold_scores(search: GridSearchCV) -> np.ndarray:
@@ -98,8 +100,12 @@ def train(frame: pd.DataFrame, seed: int = 42) -> Result:
         n_repeats=5,
         random_state=seed,
     )
+    # The holdout has done its job (measuring). The model that scores companies learns from
+    # every labeled row, with the hyperparameters already chosen by cross-validation.
+    chosen = choose(cv_folds)
+    final_model = clone(models[chosen]).fit(frame[FEATURES], y)
     return Result(
-        chosen=choose(cv_folds),
+        chosen=chosen,
         models=models,
         best_params=best_params,
         cv_folds=cv_folds,
@@ -112,4 +118,5 @@ def train(frame: pd.DataFrame, seed: int = 42) -> Result:
         importance=pd.Series(importance.importances_mean, index=FEATURES).sort_values(
             ascending=False
         ),
+        final_model=final_model,
     )

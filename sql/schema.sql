@@ -88,3 +88,24 @@ create table if not exists pncp_info (
     contracts_read   integer not null,
     contracts_kept   integer not null
 );
+
+-- Score of every company, computed at load time by `python -m lode.model score`. The API only
+-- reads this table, so it never needs the model file.
+create table if not exists company_score (
+    cnpj_basico  char(8) primary key,
+    score        double precision not null,  -- probability of winning a public contract
+    rank         integer not null,           -- 1 = highest score
+    reasons      jsonb                       -- log-odds contribution of each feature vs the
+                                             -- average company (logistic models only)
+);
+create index if not exists company_score_rank on company_score (rank);
+
+create table if not exists score_info (
+    id             boolean primary key default true check (id),  -- single row
+    cutoff         date not null,
+    model_version  text not null,
+    model          text not null,
+    scored_at      timestamptz not null default now(),
+    companies      integer not null,
+    metrics        jsonb not null           -- holdout evaluation of the model
+);

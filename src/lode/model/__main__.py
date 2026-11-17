@@ -1,6 +1,7 @@
-"""Train and evaluate the scoring model.
+"""Train and evaluate the scoring model, then score every company.
 
-uv run python -m lode.model --cutoff 2025-11-01 --horizon-end 2026-11-01
+uv run python -m lode.model train --cutoff 2025-11-01 --horizon-end 2026-11-01
+uv run python -m lode.model score
 """
 
 import argparse
@@ -15,6 +16,7 @@ from dotenv import load_dotenv
 
 from lode.model.features import build
 from lode.model.pipeline import to_frame
+from lode.model.score import model_version, score
 from lode.model.train import Result, train
 
 
@@ -42,23 +44,19 @@ def report(result: Result) -> None:
     print(result.importance.round(3).to_string())
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(prog="lode.model", description="Train the scoring model.")
-    parser.add_argument("--cutoff", type=date.fromisoformat, default=date(2025, 11, 1))
-    parser.add_argument("--horizon-end", type=date.fromisoformat, default=date(2026, 11, 1))
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--out", type=Path, default=Path("models"))
-    args = parser.parse_args()
-
+def connect() -> psycopg.Connection:
     load_dotenv()
-    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+    return psycopg.connect(os.environ["DATABASE_URL"])
+
+
+def run_train(args: argparse.Namespace) -> None:
+    with connect() as conn:
         frame = to_frame(build(conn, args.cutoff, args.horizon_end))
     result = train(frame, args.seed)
     report(result)
 
     args.out.mkdir(exist_ok=True)
-    with open(args.out / "model.pkl", "wb") as f:
-        pickle.dump(result.models[result.chosen], f)
+    (args.out / "model.pkl").write_bytes(pickle.dumps(result.final_model))
     summary = {
         "cutoff": str(args.cutoff),
         "horizon_end": str(args.horizon_end),
@@ -75,6 +73,33 @@ def main() -> None:
         "importance": result.importance.round(4).to_dict(),
     }
     (args.out / "metrics.json").write_text(json.dumps(summary, indent=2))
+    print(f"\nsaved {result.chosen}, refit on all {len(frame):,} rows, to {args.out}/model.pkl")
+
+
+def run_score(args: argparse.Namespace) -> None:
+    model_bytes = (args.out / "model.pkl").read_bytes()
+    metrics = json.loads((args.out / "metrics.json").read_text())
+    with connect() as conn:
+        result = score(conn, pickle.loads(model_bytes), model_version(model_bytes), metrics)
+    print(result)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="lode.model", description="Lode scoring model.")
+    sub = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument("--out", type=Path, default=Path("models"))
+
+    fit = sub.add_parser("train", help="train, evaluate on a holdout and save the chosen model")
+    fit.add_argument("--cutoff", type=date.fromisoformat, default=date(2025, 11, 1))
+    fit.add_argument("--horizon-end", type=date.fromisoformat, default=date(2026, 11, 1))
+    fit.add_argument("--seed", type=int, default=42)
+    fit.set_defaults(run=run_train)
+
+    rank = sub.add_parser("score", help="score every company today and store it in Postgres")
+    rank.set_defaults(run=run_score)
+
+    args = parser.parse_args()
+    args.run(args)
 
 
 if __name__ == "__main__":

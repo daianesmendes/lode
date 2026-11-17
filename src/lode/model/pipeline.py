@@ -43,7 +43,9 @@ def to_frame(rows: list[dict]) -> pd.DataFrame:
     frame = pd.DataFrame(rows).set_index("cnpj_basico")
     numeric = COUNTS + AGE_BANDS + CAPITAL
     frame[numeric] = frame[numeric].astype(float)
-    frame[FLAGS + [LABEL]] = frame[FLAGS + [LABEL]].astype(int)
+    frame[FLAGS] = frame[FLAGS].astype(int)
+    if LABEL in frame:  # scoring rows have no label
+        frame[LABEL] = frame[LABEL].astype(int)
     return frame
 
 
