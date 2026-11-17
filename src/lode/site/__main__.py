@@ -35,10 +35,13 @@ def ask_answer(question: str, url: str | None) -> str | None:
             return L.ANSWERS[reply]
         if reply == "o" and url:
             webbrowser.open(url)
+            print(f"  opened {url} in your browser; look at it, then answer here")
         elif reply == "s":
             return None
         elif reply == "q":
             raise KeyboardInterrupt
+        else:
+            print("  answer with the letter y, n or u (o opens the page)")
 
 
 def run_label(args: argparse.Namespace) -> None:
@@ -62,6 +65,8 @@ def run_label(args: argparse.Namespace) -> None:
                 print(f"  e-mail domain: {label.domain} · page: {page.url or page.error}")
                 print(f"  title: {page.title or '-'}")
                 print(textwrap.fill(page.text[:1500] or "(no text)", 100, initial_indent="  "))
+                # the page text can push the name off screen: repeat it next to the questions
+                print(f"\n>>> {company.legal_name} · {label.domain}")
                 site = ask_answer("Is this the company's website?", page.url)
                 if site is None:
                     continue
