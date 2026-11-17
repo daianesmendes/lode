@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "next typegen && tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit",
+    "worker": "node -e \"require('fs').copyFileSync(require.resolve('maplibre-gl/dist/maplibre-gl-worker.mjs'), 'public/maplibre-gl-worker.mjs')\"",
+    "predev": "npm run worker",
+    "prebuild": "npm run worker"
   },
   "dependencies": {
     "maplibre-gl": "^6.19.0",
@@ -17,6 +20,7 @@
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "4.3.3",
+    "@types/geojson": "^7946.0.16",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

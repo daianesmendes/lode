@@ -1,12 +1,16 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { use, useEffect, useState } from "react";
 import { browser } from "react-dom";
 
-import { api, type Meta } from "@/lib/api";
+import { api, type Meta, type Municipality } from "@/lib/api";
 import { isLang, type Lang, LangProvider, translator } from "@/lib/i18n";
 
 import Header from "./Header";
+
+// MapLibre needs the browser (WebGL): load it on the client only, in its own bundle.
+const CityMap = dynamic(() => import("./CityMap"), { ssr: false });
 
 function initialLang(): Lang {
   const fromUrl = new URLSearchParams(window.location.search).get("lang");
@@ -26,10 +30,13 @@ export default function Explorer() {
   use(browser("The chosen language is read from the URL or localStorage."));
   const [lang, setLang] = useState<Lang>(initialLang);
   const [meta, setMeta] = useState<Meta | null>(null);
+  const [cities, setCities] = useState<Municipality[]>([]);
+  const [city, setCity] = useState<string | null>(null);
   const [apiDown, setApiDown] = useState(false);
 
   useEffect(() => {
     api.meta().then(setMeta, () => setApiDown(true));
+    api.municipalities().then(setCities, () => setApiDown(true));
   }, []);
 
   function changeLang(next: Lang) {
@@ -55,6 +62,25 @@ export default function Explorer() {
             {t.t("apiDown")}
           </p>
         )}
+        <div className="grid gap-6 md:grid-cols-2">
+          <section>
+            <div className="mb-2 flex items-baseline justify-between">
+              <h2 className="font-medium">{t.t("mapTitle")}</h2>
+              <span className="text-xs text-muted">{t.t("mapHint")}</span>
+            </div>
+            <CityMap
+              cities={cities}
+              selected={city}
+              onSelect={(code) => setCity((current) => (current === code ? null : code))}
+            />
+          </section>
+          <section>
+            <h2 className="mb-2 font-medium">{t.t("topTitle")}</h2>
+            <p className="text-sm text-muted">
+              {city ? cities.find((c) => c.municipality_code === city)?.municipality : t.t("allCities")}
+            </p>
+          </section>
+        </div>
       </main>
     </LangProvider>
   );
