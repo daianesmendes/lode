@@ -14,8 +14,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 
+AGE = ["age_years"]  # 0 to ~100 years: no long tail, kept linear
+# Counts have long tails (99% of companies have up to 16 secondary activities, some declare 99;
+# up to 5 partners, one has 159). On a linear scale those few companies got absurd scores, so
+# counts go on a log scale: 4 -> 16 weighs the same as 16 -> 64 (diminishing returns).
 COUNTS = [
-    "age_years",
     "establishments",
     "secondary_cnaes",
     "partners",
@@ -32,7 +35,7 @@ AGE_BANDS = ["youngest_age_band", "oldest_age_band"]  # empty when there is no p
 CAPITAL = ["capital"]  # from R$ 0 to billions: log scale
 CATEGORIES = ["size_code", "legal_nature"]
 LABEL = "won"
-FEATURES = COUNTS + FLAGS + AGE_BANDS + CAPITAL + CATEGORIES  # the model sees only these
+FEATURES = AGE + COUNTS + FLAGS + AGE_BANDS + CAPITAL + CATEGORIES  # the model sees only these
 
 # Legal natures: the 5 most common get their own column, the rest share an "other" column.
 TOP_LEGAL_NATURES = 5
@@ -41,7 +44,7 @@ TOP_LEGAL_NATURES = 5
 def to_frame(rows: list[dict]) -> pd.DataFrame:
     """Rows from features.build as a DataFrame with plain numeric types (no Decimal)."""
     frame = pd.DataFrame(rows).set_index("cnpj_basico")
-    numeric = COUNTS + AGE_BANDS + CAPITAL
+    numeric = AGE + COUNTS + AGE_BANDS + CAPITAL
     frame[numeric] = frame[numeric].astype(float)
     frame[FLAGS] = frame[FLAGS].astype(int)
     if LABEL in frame:  # scoring rows have no label
@@ -49,10 +52,17 @@ def to_frame(rows: list[dict]) -> pd.DataFrame:
     return frame
 
 
+def log_scaled() -> Pipeline:
+    return make_pipeline(
+        FunctionTransformer(np.log1p, feature_names_out="one-to-one"), StandardScaler()
+    )
+
+
 def preprocessing() -> ColumnTransformer:
     return ColumnTransformer(
         [
-            ("counts", StandardScaler(), COUNTS),
+            ("age", StandardScaler(), AGE),
+            ("counts", log_scaled(), COUNTS),
             ("flags", "passthrough", FLAGS),
             (
                 "age_bands",
@@ -61,13 +71,7 @@ def preprocessing() -> ColumnTransformer:
                 ),
                 AGE_BANDS,
             ),
-            (
-                "capital",
-                make_pipeline(
-                    FunctionTransformer(np.log1p, feature_names_out="one-to-one"), StandardScaler()
-                ),
-                CAPITAL,
-            ),
+            ("capital", log_scaled(), CAPITAL),
             (
                 "categories",
                 OneHotEncoder(

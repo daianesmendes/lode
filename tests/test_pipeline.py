@@ -73,3 +73,15 @@ def test_logistic_learns_a_probability_per_company():
     assert proba.shape == (200,) and ((proba >= 0) & (proba <= 1)).all()
     # more capital, higher probability: the only signal in this toy data
     assert proba[frame["capital"].argmax()] > proba[frame["capital"].argmin()]
+
+
+def test_long_tailed_counts_are_on_a_log_scale():
+    rng = np.random.default_rng(5)
+    frame = to_frame([row(i) for i in range(300)])
+    frame["secondary_cnaes"] = rng.integers(0, 17, size=300).astype(float)  # typical: 0 to 16
+    prep = preprocessing().fit(frame)
+    outlier = to_frame([row(999)])
+    outlier["secondary_cnaes"] = 99.0
+    column = list(prep.get_feature_names_out()).index("counts__secondary_cnaes")
+    # on a linear scale 99 would be ~18 standard deviations away; on a log scale it stays close
+    assert prep.transform(outlier)[0, column] < 5
