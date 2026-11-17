@@ -21,6 +21,8 @@ type Outlines = FeatureCollection<Polygon | MultiPolygon, { ibge_code: string }>
 export const STEPS = [0.1, 0.5, 1, 3, 10, 50];
 export const COLORS = ["#eef2ff", "#c7d2fe", "#a5b4fc", "#818cf8", "#6366f1", "#4338ca", "#312e81"];
 const EMPTY = "#e5e7eb"; // cities with no software company in the data
+// Matches no city. Not "": cities without companies have an empty code and would all light up.
+const NONE = "-";
 
 function withData(outlines: Outlines, cities: Municipality[]) {
   const byIbge = new Map(cities.filter((c) => c.ibge_code).map((c) => [c.ibge_code, c]));
@@ -117,7 +119,7 @@ export default function CityMap({
             id: "selected",
             type: "line",
             source: "cities",
-            filter: ["==", ["get", "code"], ""],
+            filter: ["==", ["get", "code"], NONE],
             paint: { "line-color": "#f59e0b", "line-width": 2.5 },
           },
         ],
@@ -172,7 +174,7 @@ export default function CityMap({
   // Highlight the selected city.
   useEffect(() => {
     ready.current?.then(() =>
-      map.current?.setFilter("selected", ["==", ["get", "code"], selected ?? ""]),
+      map.current?.setFilter("selected", ["==", ["get", "code"], selected ?? NONE]),
     );
   }, [selected]);
 

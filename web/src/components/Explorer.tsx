@@ -7,6 +7,7 @@ import { browser } from "react-dom";
 import { api, type Meta, type Municipality } from "@/lib/api";
 import { isLang, type Lang, LangProvider, translator } from "@/lib/i18n";
 
+import CompanyList from "./CompanyList";
 import Header from "./Header";
 
 // MapLibre needs the browser (WebGL): load it on the client only, in its own bundle.
@@ -32,6 +33,7 @@ export default function Explorer() {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [cities, setCities] = useState<Municipality[]>([]);
   const [city, setCity] = useState<string | null>(null);
+  const [, setOpen] = useState<string | null>(null); // company panel: next step
   const [apiDown, setApiDown] = useState(false);
 
   useEffect(() => {
@@ -76,9 +78,12 @@ export default function Explorer() {
           </section>
           <section>
             <h2 className="mb-2 font-medium">{t.t("topTitle")}</h2>
-            <p className="text-sm text-muted">
-              {city ? cities.find((c) => c.municipality_code === city)?.municipality : t.t("allCities")}
-            </p>
+            <CompanyList
+              city={city}
+              cityName={cities.find((c) => c.municipality_code === city)?.municipality ?? null}
+              onClearCity={() => setCity(null)}
+              onOpen={setOpen}
+            />
           </section>
         </div>
       </main>
