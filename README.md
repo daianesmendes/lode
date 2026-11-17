@@ -103,7 +103,7 @@ if its fold-by-fold gain were larger than the spread of that gain:
 
 | Cross-validation (training rows) | PR-AUC, mean ± std over 5 folds |
 |---|---|
-| **Logistic regression** (C = 10) | **0.163 ± 0.013** |
+| **Logistic regression** (C = 0.1) | **0.174 ± 0.014** |
 | Gradient boosting (learning rate 0.05, 15 leaves) | 0.158 ± 0.020 |
 
 **Chosen: logistic regression.** Boosting did not do better, and the logistic regression can be
@@ -114,18 +114,19 @@ bootstrap intervals (1,000 resamples):
 |---|---|---|---|---|---|
 | Random | 0.010 | 0.008–0.015 | 0.51 | 1% | 0.9× |
 | Capital only | 0.117 | 0.089–0.158 | 0.89 | 20% | 7.1× |
-| **Logistic regression** | **0.171** | **0.130–0.229** | **0.91** | **31%** | **7.7×** |
+| **Logistic regression** | **0.176** | **0.135–0.233** | **0.91** | **28%** | **7.8×** |
 | Gradient boosting | 0.171 | 0.131–0.228 | 0.91 | 31% | 7.8× |
 
-The paired difference between boosting and logistic is −0.033 to +0.031: a tie. The intervals
-are wide because the holdout has only 196 winners; a single number like "0.171" hides that.
+The paired difference between boosting and logistic is −0.038 to +0.027: a tie. The intervals
+are wide because the holdout has only 196 winners; a single number like "0.176" hides that.
 
 Accuracy is not reported on purpose: with 0.9% of winners, "nobody wins" is 99% accurate.
 Classes are not reweighted either, so the score stays a real probability; reweighting would
 barely change the ranking and would inflate every probability.
 
-What the coefficients say: capital, company age and the number of secondary activities raise
-the chance; micro companies and headquarters in the state capital lower it (half of the
+What the coefficients say: capital, the number of secondary activities, the number of partners
+and company age raise the chance; micro companies and headquarters in the state capital lower
+it (half of the
 contracts come from city halls, which seem to buy from companies outside the capital). The
 boosting model agrees: shuffling capital costs it 0.128 of PR-AUC, secondary activities 0.053
 and age 0.037, while partner counts and number of establishments barely matter. That boosting
@@ -137,6 +138,13 @@ Things we learned the hard way:
   list changed after the cutoff". It had a positive weight: winners change partners more often
   *after* winning. Nobody knew that on the cutoff date, so it was removed. The results barely
   moved (it affected 1,789 companies), but a model must not see the future.
+- **Absurd scores found through the explanations.** Counts were first on a linear scale. Most
+  companies declare up to 16 secondary activities, but a few micro companies declare 99, and
+  the model extrapolated them to a 98% chance. Their score explanations showed it at once.
+  Counts now go on a log scale (diminishing returns): the logistic regression improved
+  (cross-validation 0.163 → 0.174) and those companies fell from the top 10 to rank 459 and
+  below. Boosting did not change at all, as expected: trees only look at the order of values,
+  and a log keeps the order.
 
 Known limitations:
 
@@ -145,14 +153,27 @@ Known limitations:
   bigger than it was on the cutoff date.
 - Only companies active in October 2026 are in the database, so companies that closed during
   the year are missing (survivorship bias).
+- Probabilities are well calibrated up to about 50%: on the holdout, companies predicted at
+  2% won 2.4% of the time, at 9% won 11%, at 29% won 25%. Above 50% there are only 10
+  held-out companies (predicted 70%, observed 50%), so the very top is likely overconfident.
 - The holdout is a random split of the same year. A temporal check (train on one period, test
   on the next) needs more than one year of PNCP data.
 
-Run it (about 30 seconds; prints the tables above and saves the chosen model to `models/`):
+Run it:
 
 ```bash
-uv run python -m lode.model --cutoff 2025-11-01 --horizon-end 2026-11-01
+# ~30 s: prints the tables above, refits the chosen model on every labeled row, saves it to models/
+uv run python -m lode.model train --cutoff 2025-11-01 --horizon-end 2026-11-01
+# ~6 s: scores every company as it is today and stores score, rank and reasons in Postgres
+uv run python -m lode.model score
 ```
+
+The holdout has done its job (measuring) once training ends, so the model that scores companies
+is refit on all 109,041 labeled rows with the hyperparameters chosen by cross-validation.
+Scoring uses today's cutoff (the month after the Receita snapshot), so companies opened in the
+last year are scored too. Each score comes with its reasons: in a logistic regression a
+company's log-odds split exactly into one contribution per feature, measured against the
+average company.
 
 ## Development
 
