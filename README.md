@@ -103,8 +103,8 @@ if its fold-by-fold gain were larger than the spread of that gain:
 
 | Cross-validation (training rows) | PR-AUC, mean ± std over 5 folds |
 |---|---|
-| **Logistic regression** (C = 0.1) | **0.174 ± 0.014** |
-| Gradient boosting (learning rate 0.05, 15 leaves) | 0.158 ± 0.020 |
+| **Logistic regression** (C = 1) | **0.174 ± 0.016** |
+| Gradient boosting (learning rate 0.05, 15 leaves) | 0.155 ± 0.016 |
 
 **Chosen: logistic regression.** Boosting did not do better, and the logistic regression can be
 explained coefficient by coefficient. Results on the 21,809 held-out companies, with 95%
@@ -114,11 +114,11 @@ bootstrap intervals (1,000 resamples):
 |---|---|---|---|---|---|
 | Random | 0.010 | 0.008–0.015 | 0.51 | 1% | 0.9× |
 | Capital only | 0.117 | 0.089–0.158 | 0.89 | 20% | 7.1× |
-| **Logistic regression** | **0.176** | **0.135–0.233** | **0.91** | **28%** | **7.8×** |
-| Gradient boosting | 0.171 | 0.131–0.228 | 0.91 | 31% | 7.8× |
+| **Logistic regression** | **0.175** | **0.134–0.232** | **0.91** | **30%** | **7.7×** |
+| Gradient boosting | 0.165 | 0.126–0.219 | 0.91 | 29% | 7.7× |
 
-The paired difference between boosting and logistic is −0.038 to +0.027: a tie. The intervals
-are wide because the holdout has only 196 winners; a single number like "0.176" hides that.
+The paired difference between boosting and logistic is −0.042 to +0.020: a tie. The intervals
+are wide because the holdout has only 196 winners; a single number like "0.175" hides that.
 
 Accuracy is not reported on purpose: with 0.9% of winners, "nobody wins" is 99% accurate.
 Classes are not reweighted either, so the score stays a real probability; reweighting would
@@ -145,6 +145,12 @@ Things we learned the hard way:
   (cross-validation 0.163 → 0.174) and those companies fell from the top 10 to rank 459 and
   below. Boosting did not change at all, as expected: trees only look at the order of values,
   and a log keeps the order.
+- **Two features fighting each other.** The total number of partners always equals partners
+  who are people + companies + foreigners, so with all four in the model the logistic regression
+  gave TOTVS +2.3 for "partners" and −1.6 for "partners who are people": one effect split into
+  two opposite weights. The predictions were fine, the explanation was not. Dropping the
+  redundant count left the results unchanged (cross-validation 0.174 both ways) and made every
+  explanation readable.
 
 Known limitations:
 
@@ -155,7 +161,7 @@ Known limitations:
   the year are missing (survivorship bias).
 - Probabilities are well calibrated up to about 50%: on the holdout, companies predicted at
   2% won 2.4% of the time, at 9% won 11%, at 29% won 25%. Above 50% there are only 10
-  held-out companies (predicted 70%, observed 50%), so the very top is likely overconfident.
+  held-out companies (predicted 72%, observed 60%), so the very top is likely overconfident.
 - The holdout is a random split of the same year. A temporal check (train on one period, test
   on the next) needs more than one year of PNCP data.
 
