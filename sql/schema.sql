@@ -44,6 +44,14 @@ create table if not exists municipality (
     name  text not null
 );
 
+-- Receita (SIAFI) city code -> IBGE code, from the National Treasury. Loaded by
+-- `python -m lode.etl geo`; kept apart from municipality, which every Receita load replaces.
+create table if not exists municipality_ibge (
+    code       char(4) primary key,
+    ibge_code  char(7) not null unique,
+    name       text not null             -- official name, with accents
+);
+
 create table if not exists cnae (
     code         char(7) primary key,
     description  text not null

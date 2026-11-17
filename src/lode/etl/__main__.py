@@ -2,6 +2,7 @@
 
 uv run python -m lode.etl receita --month 2026-10 [--download]
 uv run python -m lode.etl pncp --start 2025-11-01 --end 2026-10-31 [--download]
+uv run python -m lode.etl geo
 """
 
 import argparse
@@ -10,10 +11,11 @@ import time
 from datetime import date
 from pathlib import Path
 
+import httpx
 import psycopg
 from dotenv import load_dotenv
 
-from lode.etl import pncp
+from lode.etl import geo, pncp
 from lode.etl.download import available_months, download_month
 from lode.etl.extract import extract, read_lookup
 from lode.etl.load import company_ids, load, load_contracts
@@ -59,6 +61,21 @@ def run_pncp(args: argparse.Namespace) -> None:
     progress(f"pronto: {result}")
 
 
+def run_geo(args: argparse.Namespace) -> None:
+    with httpx.Client(timeout=120, follow_redirects=True) as client:
+        codes = geo.parse_cauc(geo.download_cauc(client), SOFTWARE.states)
+        progress(f"{len(codes)} cidades com código IBGE")
+        with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+            missing = geo.load_codes(conn, codes)
+        if missing:
+            raise SystemExit(f"cities without an IBGE code: {missing}")
+        for state in SOFTWARE.states:
+            outlines = geo.download_outlines(client, state)
+            path = args.web / f"{state.lower()}-municipalities.geojson"
+            geo.save_outlines(outlines, path)
+            progress(f"{len(outlines['features'])} contornos em {path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="lode.etl", description="Lode data loads.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -75,6 +92,10 @@ def main() -> None:
     contracts.add_argument("--cache", type=Path, default=Path("data/pncp"))
     contracts.add_argument("--download", action="store_true", help="download missing days first")
     contracts.set_defaults(run=run_pncp)
+
+    places = sub.add_parser("geo", help="city codes (Receita -> IBGE) and outlines for the map")
+    places.add_argument("--web", type=Path, default=Path("web/public"))
+    places.set_defaults(run=run_geo)
 
     args = parser.parse_args()
     load_dotenv()
