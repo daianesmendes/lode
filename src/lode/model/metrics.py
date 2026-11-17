@@ -34,3 +34,28 @@ def evaluate(y_true, scores) -> dict[str, float]:
         "precision_at_100": precision_at_k(y_true, scores, 100),
         "lift_at_10pct": lift_at(y_true, scores, 0.10),
     }
+
+
+def bootstrap(y_true, scores, metric, n: int = 1000, seed: int = 0) -> np.ndarray:
+    """The metric recomputed on `n` resamples (with replacement) of the evaluated companies.
+
+    The spread of these values shows how much the metric depends on which companies happened to
+    be in the holdout. The same `seed` draws the same resamples, so two rankings bootstrapped
+    with the same seed can be compared resample by resample (a paired comparison).
+    """
+    y = np.asarray(y_true)
+    s = np.asarray(scores, dtype=float)
+    rng = np.random.default_rng(seed)
+    values = []
+    for _ in range(n):
+        idx = rng.integers(0, len(y), len(y))
+        if 0 < y[idx].sum() < len(idx):  # a resample needs winners and non-winners
+            values.append(metric(y[idx], s[idx]))
+    return np.asarray(values)
+
+
+def interval(samples: np.ndarray, level: float = 0.95) -> tuple[float, float]:
+    """Percentile interval holding `level` of the bootstrap values."""
+    tail = (1 - level) / 2 * 100
+    low, high = np.percentile(samples, [tail, 100 - tail])
+    return float(low), float(high)
