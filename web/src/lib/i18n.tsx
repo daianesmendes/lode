@@ -110,7 +110,7 @@ const features: Record<Lang, Record<string, string>> = {
     establishments: "Establishments",
     size_code: "Size",
     legal_nature: "Legal form",
-    hq_in_capital: "Headquarters in the state capital",
+    hq_in_capital: "HQ in the state capital",
     simples: "Simples Nacional tax regime",
     youngest_age_band: "Age of the youngest partner",
     oldest_age_band: "Age of the oldest partner",
@@ -155,7 +155,7 @@ export function translator(lang: Lang) {
       }).format(value),
     integer: (value: number) => number.format(value),
     money: (value: number) =>
-      new Intl.NumberFormat("pt-BR", {
+      new Intl.NumberFormat(lang === "pt" ? "pt-BR" : "en-US", {
         style: "currency",
         currency: "BRL",
         notation: value >= 1e6 ? "compact" : "standard",

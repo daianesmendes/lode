@@ -8,6 +8,7 @@ import { api, type Meta, type Municipality } from "@/lib/api";
 import { isLang, type Lang, LangProvider, translator } from "@/lib/i18n";
 
 import CompanyList from "./CompanyList";
+import CompanyPanel from "./CompanyPanel";
 import Header from "./Header";
 
 // MapLibre needs the browser (WebGL): load it on the client only, in its own bundle.
@@ -33,7 +34,7 @@ export default function Explorer() {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [cities, setCities] = useState<Municipality[]>([]);
   const [city, setCity] = useState<string | null>(null);
-  const [, setOpen] = useState<string | null>(null); // company panel: next step
+  const [open, setOpen] = useState<string | null>(null);
   const [apiDown, setApiDown] = useState(false);
 
   useEffect(() => {
@@ -87,6 +88,7 @@ export default function Explorer() {
           </section>
         </div>
       </main>
+      {open && <CompanyPanel cnpj={open} onClose={() => setOpen(null)} />}
     </LangProvider>
   );
 }
