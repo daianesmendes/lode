@@ -202,3 +202,19 @@ def test_unknown_or_malformed_company(db, client):
     load_companies(db)
     assert client.get("/companies/99999999").status_code == 404
     assert client.get("/companies/1234").status_code == 422
+
+
+def test_municipalities_sum_the_probabilities(db, client):
+    load_companies(db)
+    cities = client.get("/municipalities").json()
+    assert [c["municipality"] for c in cities] == ["SAO PAULO", "CAMPINAS"]
+    sao_paulo = cities[0]
+    assert sao_paulo["companies"] == 2
+    assert sao_paulo["expected_winners"] == pytest.approx(0.91)  # 0.9 + 0.01
+    assert sao_paulo["mean_score"] == pytest.approx(0.455)
+    assert (sao_paulo["best_cnpj_basico"], sao_paulo["best_score"]) == ("11111111", 0.9)
+    micro = client.get("/municipalities", params={"size": "micro"}).json()
+    assert [(c["municipality"], c["companies"]) for c in micro] == [
+        ("CAMPINAS", 1),
+        ("SAO PAULO", 1),
+    ]

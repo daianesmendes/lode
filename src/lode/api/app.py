@@ -101,6 +101,34 @@ from public_contract where cnpj_basico = %(cnpj)s
 """
 
 
+class Municipality(BaseModel):
+    municipality_code: str
+    municipality: str | None
+    companies: int
+    mean_score: float
+    # Sum of the probabilities: since scores are calibrated, an estimate of how many companies
+    # of the city will win a public contract in the next 12 months.
+    expected_winners: float
+    best_cnpj_basico: str
+    best_legal_name: str
+    best_score: float
+
+
+MUNICIPALITIES = """
+select s.municipality_code, mu.name as municipality, count(*) as companies,
+       avg(s.score) as mean_score, sum(s.score) as expected_winners,
+       (array_agg(s.cnpj_basico order by s.rank))[1] as best_cnpj_basico,
+       (array_agg(c.legal_name order by s.rank))[1] as best_legal_name,
+       max(s.score) as best_score
+from company_score s
+join company c using (cnpj_basico)
+left join municipality mu on mu.code = s.municipality_code
+{where}
+group by s.municipality_code, mu.name
+order by expected_winners desc
+"""
+
+
 class Health(BaseModel):
     status: str
 
@@ -238,6 +266,15 @@ def create_app(database_url: str | None = None) -> FastAPI:
                 for f, v in sorted(reasons.items(), key=lambda kv: -abs(kv[1]))
             ],
         }
+
+    @app.get("/municipalities", response_model=list[Municipality], tags=["map"])
+    def municipalities(conn: Conn, size: Size | None = None):
+        """Companies and expected winners per city, for the map. Most expected winners first."""
+        if size is None:
+            return conn.execute(MUNICIPALITIES.format(where="")).fetchall()
+        code = next(code for code, name in SIZES.items() if name == size)
+        query = MUNICIPALITIES.format(where="where c.size_code = %(size)s")
+        return conn.execute(query, {"size": code}).fetchall()
 
     return app
 
