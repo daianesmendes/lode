@@ -8,6 +8,7 @@ would leak information from the held-out companies into the model.
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline, make_pipeline
@@ -31,6 +32,7 @@ AGE_BANDS = ["youngest_age_band", "oldest_age_band"]  # empty when there is no p
 CAPITAL = ["capital"]  # from R$ 0 to billions: log scale
 CATEGORIES = ["size_code", "legal_nature"]
 LABEL = "won"
+FEATURES = COUNTS + FLAGS + AGE_BANDS + CAPITAL + CATEGORIES  # the model sees only these
 
 # Legal natures: the 5 most common get their own column, the rest share an "other" column.
 TOP_LEGAL_NATURES = 5
@@ -73,6 +75,17 @@ def preprocessing() -> ColumnTransformer:
                 ),
                 CATEGORIES,
             ),
+        ]
+    )
+
+
+def boosting(seed: int = 42) -> Pipeline:
+    """Many small trees, each fixing the errors of the previous ones. Catches thresholds and
+    combinations ("old AND outside the capital") that a logistic regression cannot."""
+    return Pipeline(
+        [
+            ("prep", preprocessing()),
+            ("model", HistGradientBoostingClassifier(max_iter=200, random_state=seed)),
         ]
     )
 
