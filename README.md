@@ -12,17 +12,19 @@ checked by an LLM.
 
 The first version focuses on **software and IT services companies (CNAE 62) in São Paulo**.
 
-## How it works (planned)
+![Lode: map of São Paulo colored by expected winners per city, next to the ranked list](docs/screenshot.jpg)
+
+## How it works
 
 1. **ETL** — downloads the monthly Receita Federal open data, keeps the target sector and
    state, and loads it into Postgres. Public contracts come from the PNCP API.
 2. **Scoring model** — learns what a "good prospect" looks like and scores every company.
    The public demo uses *won a public contract* as the target, measured on held-out data.
-   Users can also upload their own customer list to find lookalikes.
+   Uploading your own customer list to find lookalikes is planned.
 3. **API** (FastAPI) — serves the map, filters and rankings. Scores are computed during the
    load, so the API stays light.
-4. **LLM check** (Gemini, with Groq as fallback) — verifies a company's website and suggests
-   an opening message, evaluated against a hand-labeled set.
+4. **LLM check** (next; Gemini, with Groq as fallback) — verifies a company's website and
+   suggests an opening message, evaluated against a hand-labeled set.
 5. **Web app** (Next.js) — the map and the prospect list.
 
 ## Roadmap
@@ -32,7 +34,7 @@ The first version focuses on **software and IT services companies (CNAE 62) in S
 - [x] Public contracts (PNCP)
 - [x] Scoring model with held-out evaluation
 - [x] API
-- [ ] Web app: map, filters, top 10
+- [x] Web app: map, filters, top 10
 - [ ] LLM website check + evaluation set
 - [ ] Deploy (Supabase + Vercel)
 
@@ -65,6 +67,7 @@ cp .env.example .env                                  # point DATABASE_URL to yo
 uv run python -m lode.etl receita --download          # latest month: download, extract, load
 uv run python -m lode.etl receita --month 2026-10     # files already in data/raw/2026-10
 uv run python -m lode.etl pncp --start 2025-11-01 --end 2026-10-31 --download
+uv run python -m lode.etl geo                         # city codes and outlines for the map
 ```
 
 The PNCP API only filters by publication date and is slow (~10 s per page of 500), so every
@@ -213,6 +216,30 @@ Choices worth explaining:
   to its score at load time, the page and the total are separate queries (so the page walks
   the rank index and stops after `limit` rows), and name search uses trigram indexes
   (`pg_trgm`), which took it from 540 ms to 4 ms.
+
+## Web app
+
+Next.js and [MapLibre](https://maplibre.org/), in `web/`. One page: a map of São Paulo colored
+by expected winners per city, the ranked list with search and filters, and a panel with each
+company's public contracts and the reasons for its score. English by default, with an EN | PT
+switch (also `?lang=pt` in the URL).
+
+```bash
+uv run uvicorn lode.api.app:app          # the API, on port 8000
+cd web && npm install && npm run dev     # the web app, on http://localhost:3000
+```
+
+Choices worth explaining:
+
+- **Cities matched by code, not by name.** The Receita identifies cities by their SIAFI code
+  and maps use IBGE codes. Matching by name would lose cities to spelling ("SAO LUIZ DO
+  PARAITINGA" vs "São Luís do Paraitinga"), so the National Treasury's open table that holds
+  both codes is used, and the load fails if any city is left without a match.
+- **No basemap.** Only the 645 city outlines from IBGE (283 KB), so there is no tile provider,
+  key or cost.
+- **The map draws in a web worker.** MapLibre 6 looks for its worker next to its own bundle,
+  where Next.js does not put it; `npm run worker` copies it to `public/` before `dev` and
+  `build`.
 
 ## Development
 
