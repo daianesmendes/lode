@@ -31,7 +31,7 @@ The first version focuses on **software and IT services companies (CNAE 62) in S
 - [x] ETL: Receita Federal open data → Postgres
 - [x] Public contracts (PNCP)
 - [x] Scoring model with held-out evaluation
-- [ ] API
+- [x] API
 - [ ] Web app: map, filters, top 10
 - [ ] LLM website check + evaluation set
 - [ ] Deploy (Supabase + Vercel)
@@ -174,6 +174,39 @@ Scoring uses today's cutoff (the month after the Receita snapshot), so companies
 last year are scored too. Each score comes with its reasons: in a logistic regression a
 company's log-odds split exactly into one contribution per feature, measured against the
 average company.
+
+## API
+
+A read-only [FastAPI](https://fastapi.tiangolo.com/) service. It only reads Postgres: scores,
+ranks and reasons are computed at load time, so the API never loads the model.
+
+```bash
+uv run uvicorn lode.api.app:app --reload    # interactive docs at http://localhost:8000/docs
+```
+
+| Endpoint | What it returns |
+|---|---|
+| `GET /health` | Whether the API and the database answer |
+| `GET /meta` | Data month, contracts period, model version and its holdout results |
+| `GET /companies` | Companies from the highest score down. Filters: `municipality`, `size`, `min_score`, `q` (name); pages of up to 100 |
+| `GET /companies/{cnpj_basico}` | One company, the public contracts it won and **why it got its score** |
+| `GET /municipalities` | Per city: companies, mean score, best company and expected winners |
+
+Choices worth explaining:
+
+- **No contact data.** E-mails and phones are public in the Receita files, but for individual
+  businesses they are often personal, so this public demo does not serve them (LGPD).
+- **Reasons for every score.** In a logistic regression a company's log-odds split exactly into
+  one contribution per feature. `GET /companies/{cnpj}` lists them, largest first, measured
+  against the average company: for TOTVS, capital adds +4.3 and age +1.8.
+- **Expected winners per city.** The sum of the probabilities of a city's companies. Since the
+  scores are calibrated, it estimates how many of them will win a contract next year. Over the
+  whole state it adds up to 1,107, close to the 1,015 winners of the last year.
+- **Fast without a cache.** Listing, filters and name search answer in under 100 ms on 133k
+  companies (city totals in about 300 ms): each company's trade name and city are copied next
+  to its score at load time, the page and the total are separate queries (so the page walks
+  the rank index and stops after `limit` rows), and name search uses trigram indexes
+  (`pg_trgm`), which took it from 540 ms to 4 ms.
 
 ## Development
 
