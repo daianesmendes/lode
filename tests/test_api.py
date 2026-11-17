@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from lode.api.app import create_app
 from lode.etl.load import SCHEMA
+from lode.model.score import MAIN_ESTABLISHMENT
 
 URL = os.environ.get("TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")
@@ -89,3 +90,74 @@ def test_meta_tells_where_the_data_comes_from_and_how_good_the_model_is(db, clie
 def test_docs_are_published(db, client):
     paths = client.get("/openapi.json").json()["paths"]
     assert {"/health", "/meta"} <= set(paths)
+
+
+def load_companies(conn):
+    """Three scored companies. B's headquarters is in another state: its São Paulo branch, the
+    only establishment we have, stands for it."""
+    conn.execute("insert into municipality values ('7107', 'SAO PAULO'), ('6291', 'CAMPINAS')")
+    for cnpj, name, size, email in [
+        ("11111111", "ALFA SOFTWARE LTDA", "05", "contato@alfa.example"),
+        ("22222222", "BETA SISTEMAS LTDA", "01", None),
+        ("33333333", "GAMA DADOS LTDA", "01", "gama@example.com"),
+    ]:
+        conn.execute(
+            "insert into company (cnpj_basico, legal_name, legal_nature, capital, size_code, "
+            "is_simples, is_mei, partners, partners_person, partners_company, "
+            "partners_foreign) values (%s, %s, '2062', 1000, %s, false, false, 1, 1, 0, 0)",
+            (cnpj, name, size),
+        )
+        conn.execute(
+            "insert into establishment (cnpj, cnpj_basico, is_headquarters, trade_name, "
+            "opened_on, cnae_main, cnaes_secondary, uf, municipality_code, phone1, email) "
+            "values (%s, %s, %s, %s, '2015-01-01', '6201501', '{}', 'SP', %s, '1199999999', %s)",
+            (
+                cnpj + "000100",
+                cnpj,
+                cnpj != "22222222",
+                f"{name.split()[0]} TECH",
+                "6291" if cnpj == "33333333" else "7107",
+                email,
+            ),
+        )
+    conn.execute(
+        "insert into company_score (cnpj_basico, score, rank, reasons) values "
+        "('11111111', 0.9, 1, '{\"capital\": 2.0}'), "
+        "('33333333', 0.2, 2, '{\"capital\": 0.5}'), "
+        "('22222222', 0.01, 3, '{\"capital\": -1.0}')"
+    )
+    conn.execute(MAIN_ESTABLISHMENT)  # as the score command does
+
+
+def test_companies_come_by_rank_without_contact_data(db, client):
+    load_companies(db)
+    page = client.get("/companies").json()
+    assert page["total"] == 3
+    assert [c["cnpj_basico"] for c in page["items"]] == ["11111111", "33333333", "22222222"]
+    first = page["items"][0]
+    assert first["size"] == "other" and first["municipality"] == "SAO PAULO"
+    assert first["trade_name"] == "ALFA TECH"
+    assert not {"email", "phone1", "phone2"} & set(first)
+    assert page["items"][2]["municipality"] == "SAO PAULO"  # branch stands for the company
+
+
+def test_companies_filters(db, client):
+    load_companies(db)
+
+    def ids(**params):
+        return [c["cnpj_basico"] for c in client.get("/companies", params=params).json()["items"]]
+
+    assert ids(size="micro") == ["33333333", "22222222"]
+    assert ids(municipality="6291") == ["33333333"]
+    assert ids(min_score=0.5) == ["11111111"]
+    assert ids(q="beta") == ["22222222"]
+    assert ids(q="gama tech") == ["33333333"]  # trade name
+
+
+def test_companies_pagination(db, client):
+    load_companies(db)
+    page = client.get("/companies", params={"limit": 1, "offset": 1}).json()
+    assert page["total"] == 3 and [c["rank"] for c in page["items"]] == [2]
+    past_the_end = client.get("/companies", params={"offset": 10}).json()
+    assert past_the_end["total"] == 3 and past_the_end["items"] == []
+    assert client.get("/companies", params={"limit": 101}).status_code == 422

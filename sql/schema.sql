@@ -98,7 +98,12 @@ create table if not exists company_score (
     reasons      jsonb                       -- log-odds contribution of each feature vs the
                                              -- average company (logistic models only)
 );
+-- What the API lists, copied at scoring time so requests need no per-company aggregation: the
+-- headquarters, or (when the headquarters is in another state) the oldest establishment we have.
+alter table company_score add column if not exists trade_name text;
+alter table company_score add column if not exists municipality_code char(4);
 create index if not exists company_score_rank on company_score (rank);
+create index if not exists company_score_place on company_score (municipality_code, rank);
 
 create table if not exists score_info (
     id             boolean primary key default true check (id),  -- single row
@@ -109,3 +114,10 @@ create table if not exists score_info (
     companies      integer not null,
     metrics        jsonb not null           -- holdout evaluation of the model
 );
+
+-- Name search ("totvs" anywhere in the name) with trigram indexes: a plain ilike '%...%' reads
+-- every row.
+create extension if not exists pg_trgm;
+create index if not exists company_name_search on company using gin (legal_name gin_trgm_ops);
+create index if not exists company_score_name_search
+    on company_score using gin (trade_name gin_trgm_ops);

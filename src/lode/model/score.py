@@ -18,6 +18,17 @@ from lode.etl.load import SCHEMA
 from lode.model.features import build
 from lode.model.pipeline import CATEGORIES, FEATURES, to_frame
 
+MAIN_ESTABLISHMENT = """
+update company_score s
+set trade_name = m.trade_name, municipality_code = m.municipality_code
+from (
+    select distinct on (cnpj_basico) cnpj_basico, trade_name, municipality_code
+    from establishment
+    order by cnpj_basico, is_headquarters desc, opened_on nulls last
+) m
+where m.cnpj_basico = s.cnpj_basico
+"""
+
 
 def cutoff_for(conn: psycopg.Connection) -> date:
     """First day after the month of the loaded Receita snapshot ("2026-10" -> 2026-11-01)."""
@@ -74,6 +85,7 @@ def score(
                 frame.index, probabilities, ranks, explained, strict=True
             ):
                 copy.write_row((cnpj, float(p), int(rank), json.dumps(why) if why else None))
+        cur.execute(MAIN_ESTABLISHMENT)
         cur.execute(
             "insert into score_info (cutoff, model_version, model, companies, metrics) "
             "values (%s, %s, %s, %s, %s)",

@@ -10,14 +10,48 @@ import os
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 import psycopg
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from pydantic import BaseModel
+
+SIZES = {"00": "not_informed", "01": "micro", "03": "small", "05": "other"}  # Receita codes
+Size = Literal["not_informed", "micro", "small", "other"]
+
+# Trade name and city were copied into company_score at scoring time (see lode.model.score).
+COMPANIES = """
+select s.rank, s.score, c.cnpj_basico, c.legal_name, s.trade_name as trade_name,
+       s.municipality_code, mu.name as municipality, c.size_code
+from company_score s
+join company c using (cnpj_basico)
+left join municipality mu on mu.code = s.municipality_code
+"""
+
+
+class Company(BaseModel):
+    rank: int
+    score: float  # probability of winning a public contract in the next 12 months
+    cnpj_basico: str
+    legal_name: str
+    trade_name: str | None
+    municipality_code: str
+    municipality: str | None
+    size: Size
+
+
+class CompanyPage(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    items: list[Company]
+
+
+def company(row: dict) -> dict:
+    return {**row, "size": SIZES.get(row.pop("size_code"), "not_informed")}
 
 
 class Health(BaseModel):
@@ -95,6 +129,40 @@ def create_app(database_url: str | None = None) -> FastAPI:
             "pr_auc_interval": metrics["holdout_pr_auc_interval"][chosen],
         }
         return row
+
+    @app.get("/companies", response_model=CompanyPage, tags=["companies"])
+    def companies(
+        conn: Conn,
+        municipality: Annotated[str | None, Query(description="Receita city code")] = None,
+        size: Size | None = None,
+        min_score: Annotated[float, Query(ge=0, le=1)] = 0,
+        q: Annotated[str | None, Query(min_length=2, description="part of the name")] = None,
+        limit: Annotated[int, Query(ge=1, le=100)] = 20,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ):
+        """Companies from the highest score down, with optional filters. No contact data."""
+        where, params = ["s.score >= %(min_score)s"], {"min_score": min_score}
+        if municipality:
+            where.append("s.municipality_code = %(municipality)s")
+            params["municipality"] = municipality
+        if size:
+            where.append("c.size_code = %(size)s")
+            params["size"] = next(code for code, name in SIZES.items() if name == size)
+        if q:
+            where.append(  # one search per table, so each can use its trigram index
+                "s.cnpj_basico in (select cnpj_basico from company where legal_name ilike %(q)s"
+                " union select cnpj_basico from company_score where trade_name ilike %(q)s)"
+            )
+            params["q"] = f"%{q}%"
+        # Two queries: the page walks the rank index and stops after `limit` rows, while a
+        # window count would force every matching row to be built first.
+        filters = " where " + " and ".join(where)
+        page = COMPANIES + filters + " order by s.rank limit %(limit)s offset %(offset)s"
+        rows = conn.execute(page, {**params, "limit": limit, "offset": offset}).fetchall()
+        count = f"select count(*) as total from ({COMPANIES}{filters}) matching"
+        total = conn.execute(count, params).fetchone()["total"]
+        items = [company(row) for row in rows]
+        return {"total": total, "limit": limit, "offset": offset, "items": items}
 
     return app
 

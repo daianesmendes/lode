@@ -85,6 +85,9 @@ def test_score_ranks_companies_and_explains_the_logistic(conn):  # noqa: F811
     average = conn.execute("select avg(ln(score / (1 - score))) from company_score").fetchone()[0]
     assert sum(reasons.values()) == pytest.approx(logit - average, abs=0.01)
 
+    places = conn.execute("select municipality_code from company_score").fetchall()
+    assert places == [("7107",)] * 3
+
     info = conn.execute("select model_version, model, companies, metrics from score_info")
     assert info.fetchone() == ("abc123", "LogisticRegression", 3, {"pr_auc": 0.2})
 
