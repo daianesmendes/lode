@@ -9,6 +9,7 @@ import { isLang, type Lang, LangProvider, translator } from "@/lib/i18n";
 
 import CompanyList from "./CompanyList";
 import CompanyPanel from "./CompanyPanel";
+import Footer from "./Footer";
 import Header from "./Header";
 
 // MapLibre needs the browser (WebGL): load it on the client only, in its own bundle.
@@ -66,7 +67,7 @@ export default function Explorer() {
           </p>
         )}
         <div className="grid gap-6 md:grid-cols-2">
-          <section>
+          <section className="min-w-0">
             <div className="mb-2 flex items-baseline justify-between">
               <h2 className="font-medium">{t.t("mapTitle")}</h2>
               <span className="text-xs text-muted">{t.t("mapHint")}</span>
@@ -77,7 +78,7 @@ export default function Explorer() {
               onSelect={(code) => setCity((current) => (current === code ? null : code))}
             />
           </section>
-          <section>
+          <section className="min-w-0">
             <h2 className="mb-2 font-medium">{t.t("topTitle")}</h2>
             <CompanyList
               city={city}
@@ -88,6 +89,7 @@ export default function Explorer() {
           </section>
         </div>
       </main>
+      <Footer meta={meta} />
       {open && <CompanyPanel cnpj={open} onClose={() => setOpen(null)} />}
     </LangProvider>
   );

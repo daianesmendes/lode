@@ -47,6 +47,7 @@ const en = {
     "Capital, size and partners are today's values (there is no history), and only companies active today are included.",
   readMore: "Methods and limitations",
   apiDocs: "API docs",
+  sources: "Data sources",
   loading: "Loading…",
   apiDown: "The API is not answering. Start it with: uv run uvicorn lode.api.app:app",
 };
@@ -92,6 +93,7 @@ const pt: Record<Keys, string> = {
     "Capital, porte e sócios são os valores de hoje (não há histórico), e só entram empresas ativas hoje.",
   readMore: "Métodos e limitações",
   apiDocs: "Documentação da API",
+  sources: "Fontes dos dados",
   loading: "Carregando…",
   apiDown: "A API não está respondendo. Inicie com: uv run uvicorn lode.api.app:app",
 };

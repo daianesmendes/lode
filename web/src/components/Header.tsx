@@ -11,14 +11,18 @@ export default function Header({ meta, onLang }: { meta: Meta | null; onLang: (l
         <h1 className="text-2xl font-semibold tracking-tight">Lode</h1>
         <p className="text-sm text-muted">{t.t("tagline")}</p>
       </div>
-      <div className="flex items-center gap-4 text-xs text-muted">
+      <div className="flex w-full items-center justify-between gap-4 text-xs text-muted sm:w-auto">
         {meta && (
-          <span>
+          <span className="min-w-0">
             {t.t("dataFrom")} {meta.receita_month} · {t.t("holdoutPrAuc")}:{" "}
             <strong className="text-foreground">{t.number(meta.holdout.pr_auc, 3)}</strong>
           </span>
         )}
-        <div className="flex overflow-hidden rounded-md border border-line" role="group" aria-label="Language">
+        <div
+          className="flex shrink-0 overflow-hidden rounded-md border border-line"
+          role="group"
+          aria-label="Language"
+        >
           {(["en", "pt"] as const).map((lang) => (
             <button
               key={lang}
