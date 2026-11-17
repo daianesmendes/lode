@@ -148,3 +148,18 @@ def test_window_outside_the_loaded_contracts_fails(conn):
         build(conn, CUTOFF, date(2027, 1, 1))
     with pytest.raises(ValueError, match="must be before"):
         build(conn, END, CUTOFF)
+
+
+def test_without_horizon_there_is_no_label_and_no_contracts_needed(conn):
+    conn.execute("truncate pncp_info")
+    insert(
+        conn,
+        [company("11111111"), company("22222222")],
+        [
+            establishment("11111111", 1, date(2020, 1, 1)),
+            establishment("22222222", 1, date(2026, 3, 1)),  # opened after the old cutoff
+        ],
+    )
+    rows = build(conn, date(2026, 11, 1), None)
+    assert [r["cnpj_basico"] for r in rows] == ["11111111", "22222222"]
+    assert "won" not in rows[0]

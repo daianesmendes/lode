@@ -54,17 +54,19 @@ select
     c.partners_company,
     c.partners_foreign,
     c.youngest_age_band,
-    c.oldest_age_band,
-    exists (
-        select 1 from public_contract p
-        where p.cnpj_basico = c.cnpj_basico
-          and p.published_at >= %(cutoff)s and p.published_at < %(horizon_end)s
-    ) as won
+    c.oldest_age_band{label}
 from company c
 join firm f using (cnpj_basico)
 where f.opened_on < %(cutoff)s
 order by c.cnpj_basico
 """
+
+LABEL = """,
+    exists (
+        select 1 from public_contract p
+        where p.cnpj_basico = c.cnpj_basico
+          and p.published_at >= %(cutoff)s and p.published_at < %(horizon_end)s
+    ) as won"""
 
 
 def check_horizon(conn: psycopg.Connection, cutoff: date, horizon_end: date) -> None:
@@ -85,9 +87,15 @@ def check_horizon(conn: psycopg.Connection, cutoff: date, horizon_end: date) -> 
         )
 
 
-def build(conn: psycopg.Connection, cutoff: date, horizon_end: date) -> list[dict]:
-    """Companies opened before `cutoff`, with `won` = a contract published in [cutoff, end)."""
-    check_horizon(conn, cutoff, horizon_end)
+def build(conn: psycopg.Connection, cutoff: date, horizon_end: date | None) -> list[dict]:
+    """Companies opened before `cutoff`, with `won` = a contract published in [cutoff, end).
+
+    With `horizon_end=None` there is no label: that is how companies are scored today, when
+    the future has not happened yet.
+    """
+    if horizon_end is not None:
+        check_horizon(conn, cutoff, horizon_end)
     params = {"cutoff": cutoff, "horizon_end": horizon_end, "capital": SAO_PAULO_CITY}
+    query = QUERY.format(label=LABEL if horizon_end is not None else "")
     with conn.cursor(row_factory=dict_row) as cur:
-        return cur.execute(QUERY, params).fetchall()
+        return cur.execute(query, params).fetchall()
