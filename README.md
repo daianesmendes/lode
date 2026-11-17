@@ -30,7 +30,7 @@ The first version focuses on **software and IT services companies (CNAE 62) in S
 - [x] Project setup: sector definition, tests, CI
 - [x] ETL: Receita Federal open data → Postgres
 - [x] Public contracts (PNCP)
-- [ ] Scoring model with held-out evaluation (logistic baseline done; gradient boosting next)
+- [x] Scoring model with held-out evaluation
 - [ ] API
 - [ ] Web app: map, filters, top 10
 - [ ] LLM website check + evaluation set
@@ -96,15 +96,29 @@ next 12 months?* Features use only what was known on that date; the label is hav
 published in the PNCP from November 2025 to October 2026. That leaves 109,041 companies opened
 before the cutoff, of which 981 (0.9%) won.
 
-20% of the companies are held out and scored once, at the end. The regularization of the
-logistic regression is chosen by 5-fold cross-validation on the other 80%. Results on the
-21,809 held-out companies:
+20% of the companies are held out and only reported, never used to decide anything. On the
+other 80%, 5-fold cross-validation picks the hyperparameters and chooses between a logistic
+regression and gradient boosting (both scored on the same folds). Boosting would be chosen only
+if its fold-by-fold gain were larger than the spread of that gain:
 
-| Ranking | PR-AUC | ROC-AUC | Precision in top 100 | Lift in top 10% |
-|---|---|---|---|---|
-| Random | 0.010 | 0.51 | 1% | 0.9× |
-| Capital only | 0.117 | 0.89 | 20% | 7.1× |
-| **Logistic regression** | **0.171** | **0.91** | **31%** | **7.7×** |
+| Cross-validation (training rows) | PR-AUC, mean ± std over 5 folds |
+|---|---|
+| **Logistic regression** (C = 10) | **0.163 ± 0.013** |
+| Gradient boosting (learning rate 0.05, 15 leaves) | 0.158 ± 0.020 |
+
+**Chosen: logistic regression.** Boosting did not do better, and the logistic regression can be
+explained coefficient by coefficient. Results on the 21,809 held-out companies, with 95%
+bootstrap intervals (1,000 resamples):
+
+| Ranking | PR-AUC | 95% interval | ROC-AUC | Precision in top 100 | Lift in top 10% |
+|---|---|---|---|---|---|
+| Random | 0.010 | 0.008–0.015 | 0.51 | 1% | 0.9× |
+| Capital only | 0.117 | 0.089–0.158 | 0.89 | 20% | 7.1× |
+| **Logistic regression** | **0.171** | **0.130–0.229** | **0.91** | **31%** | **7.7×** |
+| Gradient boosting | 0.171 | 0.131–0.228 | 0.91 | 31% | 7.8× |
+
+The paired difference between boosting and logistic is −0.033 to +0.031: a tie. The intervals
+are wide because the holdout has only 196 winners; a single number like "0.171" hides that.
 
 Accuracy is not reported on purpose: with 0.9% of winners, "nobody wins" is 99% accurate.
 Classes are not reweighted either, so the score stays a real probability; reweighting would
@@ -112,7 +126,10 @@ barely change the ranking and would inflate every probability.
 
 What the coefficients say: capital, company age and the number of secondary activities raise
 the chance; micro companies and headquarters in the state capital lower it (half of the
-contracts come from city halls, which seem to buy from companies outside the capital).
+contracts come from city halls, which seem to buy from companies outside the capital). The
+boosting model agrees: shuffling capital costs it 0.128 of PR-AUC, secondary activities 0.053
+and age 0.037, while partner counts and number of establishments barely matter. That boosting
+found no interaction worth having suggests the signal is mostly additive.
 
 Things we learned the hard way:
 
@@ -131,7 +148,7 @@ Known limitations:
 - The holdout is a random split of the same year. A temporal check (train on one period, test
   on the next) needs more than one year of PNCP data.
 
-Run it (prints the table above and saves the model to `models/`):
+Run it (about 30 seconds; prints the tables above and saves the chosen model to `models/`):
 
 ```bash
 uv run python -m lode.model --cutoff 2025-11-01 --horizon-end 2026-11-01
