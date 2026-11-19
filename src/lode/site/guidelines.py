@@ -3,16 +3,21 @@ labeling tool show these same rules, so the evaluation measures the model, not a
 between two definitions."""
 
 COMPANY_SITE = {
-    "yes": "The page is the company's own site, or the site of its corporate group "
-    "(a multinational's global site counts).",
+    "yes": "The page is the company's own site, or the site of its corporate group (a "
+    "multinational's global site counts). When the page shows a different company name, it "
+    "counts only if the page itself shows the link: the registered name or brand, or that it "
+    "belongs to the same group, is a former name, or was acquired.",
     "no": "The page belongs to someone else (an accounting firm, a hosting company, another "
-    "business), or is a parked or for-sale domain.",
-    "unclear": "The page is empty, broken or too generic to tell.",
+    "business, including a different name with no visible link), or is a parked or for-sale "
+    "domain.",
+    "unclear": "The page is empty, broken, blocks automated visitors, or is too generic to tell.",
 }
 
 PUBLIC_SECTOR = {
-    "yes": "The page says the company sells to or serves the public sector: city halls, "
-    "state or federal bodies, public tenders (licitações), government clients.",
+    "yes": "The page says the company's clients include public bodies of any kind: city "
+    "halls, state or federal bodies, secretariats, public school networks, government; or it "
+    "mentions public tenders (licitações). Private schools do not count. Do not infer it from "
+    "the field alone (education, transport): the page must say it.",
     "no": "It is the company's site and nothing on it points to public-sector clients.",
     "unclear": "Not the company's site, or the page says too little to tell.",
 }

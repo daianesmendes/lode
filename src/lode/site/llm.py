@@ -15,6 +15,17 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 RETRY_STATUS = {408, 429, 500, 502, 503, 504}
+REST = 300  # seconds a model that refused (rate limit, overload, timeout) goes to the back
+
+# Free tiers refuse often. A model that just refused is tried last for a while, instead of
+# first on every call, so a batch does not wait on the same refusals company after company.
+_resting: dict["Endpoint", float] = {}
+
+
+def order(chain: list["Endpoint"], now: float) -> list["Endpoint"]:
+    """The chain with models that refused recently moved to the end (still a last resort)."""
+    fresh = [e for e in chain if _resting.get(e, 0) <= now]
+    return fresh + [e for e in chain if _resting.get(e, 0) > now]
 
 
 @dataclass(frozen=True)
@@ -64,7 +75,7 @@ def ask(
         "type": "json_schema",
         "json_schema": {"name": schema.__name__, "schema": schema.model_json_schema()},
     }
-    for endpoint in chain:
+    for endpoint in order(chain, time.monotonic()):
         body = {
             "model": endpoint.model,
             "messages": messages,
@@ -82,9 +93,12 @@ def ask(
             )
         except httpx.HTTPError as exc:
             log(f"{endpoint.model}: {type(exc).__name__}")
+            _resting[endpoint] = time.monotonic() + REST
             continue
-        if response.status_code in RETRY_STATUS or response.status_code >= 400:
+        if response.status_code >= 400:
             log(f"{endpoint.model}: HTTP {response.status_code}")
+            if response.status_code in RETRY_STATUS:
+                _resting[endpoint] = time.monotonic() + REST
             continue
         data = response.json()
         try:

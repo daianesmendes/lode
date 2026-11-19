@@ -21,8 +21,8 @@ from lode.site import labels as L
 from lode.site.candidates import Candidate, candidates
 from lode.site.check import check
 from lode.site.guidelines import rules_text
-from lode.site.llm import endpoints_from_env
-from lode.site.page import cached, client
+from lode.site.llm import NoModelAnswered, endpoints_from_env
+from lode.site.page import cached, client, readable
 
 TOP = 2000
 CACHE = Path("data/sites")
@@ -80,9 +80,13 @@ def run_label(args: argparse.Namespace) -> None:
                 site = ask_answer("Is this the company's website?", url)
                 if site is None:
                     continue
-                public = ask_answer("Does it sell to the public sector?", url)
-                if public is None:
-                    continue
+                if site == "yes":
+                    public = ask_answer("Does it sell to the public sector?", url)
+                    if public is None:
+                        continue
+                else:  # the rule: not its site (or can't tell) means public is unclear
+                    public = "unclear"
+                    print("  public sector: unclear (not the company's site)")
                 label.is_company_site, label.public_sector = site, public
                 label.note = input("Note (optional, Enter to skip): ").strip()
                 L.write(args.labels, sample)  # saved after every company
@@ -91,12 +95,19 @@ def run_label(args: argparse.Namespace) -> None:
     print(f"{sum(x.done for x in sample)} of {len(sample)} labeled")
 
 
-def llm_answer(api, chain, company: Candidate, page) -> dict:
-    """The LLM's answer for one company, cached per prompt version."""
-    path = E.answers_dir(ANSWERS) / f"{company.cnpj_basico}.json"
+def llm_answer(api, chain, company: Candidate, page, model: str | None = None) -> dict:
+    """The LLM's answer for one company, cached per prompt version (and model, if fixed)."""
+    path = E.answers_dir(ANSWERS, model) / f"{company.cnpj_basico}.json"
     if path.exists():
         return json.loads(path.read_text())
-    answer = check(api, chain, company, page, log=lambda m: print(f"    {m}"))
+    for wait in (0, 20, 60, 120):  # one model alone has no fallback: wait out rate limits
+        time.sleep(wait)
+        try:
+            answer = check(api, chain, company, page, log=lambda m: print(f"    {m}"))
+            break
+        except NoModelAnswered:
+            if len(chain) > 1 or wait == 120:
+                raise
     data = {
         **answer.value.model_dump(),
         "model": answer.model,
@@ -121,30 +132,44 @@ def run_eval(args: argparse.Namespace) -> None:
     with connect() as conn:
         found = {c.cnpj_basico: c for c in candidates(conn, TOP)}
     chain = endpoints_from_env()
+    if args.model:  # one model on its own, no fallback: compare models on the same cases
+        chain = [e for e in chain if e.model == args.model]
+        if not chain:
+            raise SystemExit(f"{args.model} is not in LLM_MODELS or LLM_FALLBACK_MODELS")
     rows = []
-    with client() as http, httpx.Client(timeout=90) as api:
+    with client() as http, httpx.Client(timeout=30) as api:
         for x in labels:
             page = cached(CACHE, http, x.domain)
             rows.append(
-                (x, page, E.rule(x, page), llm_answer(api, chain, found[x.cnpj_basico], page))
+                (
+                    x,
+                    page,
+                    E.rule(x, page),
+                    llm_answer(api, chain, found[x.cnpj_basico], page, args.model),
+                )
             )
+    ok = [row for row in rows if readable(row[1])]
     print(f"\n{args.split}: {len(rows)} labeled companies, prompt version {E.prompt_version()}")
-    print(f"pages with no text (blocked or down): {sum(not p.text for _, p, _, _ in rows)}\n")
-    for i, question in enumerate(("is_company_site", "public_sector")):
-        truth = [getattr(x, question) for x, _, _, _ in rows]
-        print(f"{question:<16}{'accuracy':>9}{'yes precision':>15}{'yes recall':>12}")
-        for name, guess in (
-            ("rule", [r[i] for _, _, r, _ in rows]),
-            ("LLM", [a[question] for _, _, _, a in rows]),
-        ):
-            s = E.score(truth, guess)
-            print(
-                f"  {name:<14}{pct(s.accuracy):>9}{pct(s.yes_precision):>15}{pct(s.yes_recall):>12}"
-            )
-        print()
+    print(f"model: {args.model or 'the whole fallback chain'}")
+    print(f"unreadable pages (down, empty or a bot wall): {len(rows) - len(ok)}")
+    for title, subset in (("all companies", rows), ("readable pages only", ok)):
+        print(f"\n== {title} ({len(subset)})")
+        for i, question in enumerate(("is_company_site", "public_sector")):
+            truth = [getattr(x, question) for x, _, _, _ in subset]
+            print(f"{question:<16}{'accuracy':>9}{'yes precision':>15}{'yes recall':>12}")
+            for name, guess in (
+                ("rule", [r[i] for _, _, r, _ in subset]),
+                ("LLM", [a[question] for _, _, _, a in subset]),
+            ):
+                sc = E.score(truth, guess)
+                print(
+                    f"  {name:<14}{pct(sc.accuracy):>9}{pct(sc.yes_precision):>15}"
+                    f"{pct(sc.yes_recall):>12}"
+                )
+    print()
     if args.split == "dev":  # the test split is never inspected case by case
-        print("disagreements (label -> LLM):")
-        for x, _, _, a in rows:
+        print("disagreements on readable pages (label -> LLM):")
+        for x, _, _, a in ok:
             if (x.is_company_site, x.public_sector) != (a["is_company_site"], a["public_sector"]):
                 print(
                     f"- {found[x.cnpj_basico].legal_name[:45]} · {x.domain} · shared {x.shared_by}"
@@ -172,6 +197,7 @@ def main() -> None:
     evaluation = sub.add_parser("eval", help="compare the LLM with the hand labels")
     evaluation.add_argument("--split", choices=["dev", "test"], default="dev")
     evaluation.add_argument("--labels", type=Path, default=LABELS)
+    evaluation.add_argument("--model", help="evaluate one model alone, without fallback")
     evaluation.set_defaults(run=run_eval)
     args = parser.parse_args()
     args.run(args)

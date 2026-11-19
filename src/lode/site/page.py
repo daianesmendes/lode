@@ -58,6 +58,26 @@ class _Text(HTMLParser):
             self.parts.append(data.strip())
 
 
+# What a bot wall says instead of the site. Only the beginning of the page is checked, so a long
+# page that merely mentions "access denied" somewhere is still readable.
+BLOCK_SIGNS = (
+    "403 forbidden", "403 - forbidden", "access to this page is forbidden", "access denied",
+    "you have been blocked", "attention required", "security checkpoint",
+    "verifying you are human", "verify you are human", "checking your browser", "just a moment",
+    "enable javascript and cookies",
+)  # fmt: skip
+
+
+def blocked(page: "Page") -> bool:
+    start = f"{page.title} {page.text[:600]}".lower()
+    return any(sign in start for sign in BLOCK_SIGNS)
+
+
+def readable(page: "Page") -> bool:
+    """Whether there is anything to judge: the page answered, has text and is not a bot wall."""
+    return bool(page.url and page.text) and not blocked(page)
+
+
 def visible_text(html: str) -> tuple[str, str]:
     """(title, text) of an HTML page: no scripts or styles, whitespace collapsed."""
     parser = _Text()

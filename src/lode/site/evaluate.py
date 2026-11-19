@@ -14,14 +14,14 @@ from pathlib import Path
 
 from lode.site.check import SYSTEM
 from lode.site.labels import Label
-from lode.site.page import Page
+from lode.site.page import Page, readable
 
 SHARED = 5  # a domain used by this many companies is not any one company's site
 
 
 def rule(label: Label, page: Page) -> tuple[str, str]:
     """(is_company_site, public_sector) by the simple rule."""
-    if page.url is None or not page.text:
+    if not readable(page):
         return "unclear", "unclear"
     if label.shared_by >= SHARED:
         return "no", "unclear"
@@ -34,8 +34,9 @@ def prompt_version() -> str:
     return hashlib.sha256(SYSTEM.encode()).hexdigest()[:10]
 
 
-def answers_dir(root: Path) -> Path:
-    return root / prompt_version()
+def answers_dir(root: Path, model: str | None = None) -> Path:
+    """Answers per prompt version, and per model when one model is evaluated on its own."""
+    return root / prompt_version() / (model.replace("/", "_") if model else "chain")
 
 
 @dataclass
