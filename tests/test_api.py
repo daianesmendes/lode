@@ -34,8 +34,8 @@ def db():
     with psycopg.connect(URL, autocommit=True) as conn:
         conn.execute(SCHEMA.read_text())
         conn.execute(
-            "truncate company_score, score_info, public_contract, pncp_info, establishment, "
-            "company, municipality, municipality_ibge, cnae, load_info"
+            "truncate site_check, company_score, score_info, public_contract, pncp_info, "
+            "establishment, company, municipality, municipality_ibge, cnae, load_info"
         )
         yield conn
 
@@ -230,3 +230,31 @@ def test_only_the_web_app_may_call_from_a_browser(db, client):
     assert allowed.headers["access-control-allow-origin"] == "http://localhost:3000"
     other = client.get("/health", headers={"Origin": "https://example.com"})
     assert "access-control-allow-origin" not in other.headers
+
+
+def test_company_detail_shows_the_checked_website(db, client):
+    load_companies(db)
+    db.execute(
+        "insert into site_check (cnpj_basico, domain, url, readable, page_company, "
+        "is_company_site, public_sector, what_it_does, evidence, model, prompt_version) values "
+        "('11111111', 'alfa.com.br', 'https://alfa.com.br', true, 'Alfa', 'yes', 'yes', "
+        "'ERP for city halls.', 'clientes: prefeituras', 'gpt-oss', 'v1'), "
+        "('33333333', 'contabil.com.br', 'https://contabil.com.br', true, 'Contabil', 'no', "
+        "'unclear', 'Accounting.', 'Contabil Assessoria', 'gpt-oss', 'v1')"
+    )
+    assert client.get("/companies/11111111").json()["website"] == {
+        "url": "https://alfa.com.br",
+        "domain": "alfa.com.br",
+        "verified": True,
+        "what_it_does": "ERP for city halls.",
+        "public_sector_evidence": "clientes: prefeituras",
+    }
+    # someone else's site: no summary and no public-sector quote leak into the company's page
+    assert client.get("/companies/33333333").json()["website"] == {
+        "url": "https://contabil.com.br",
+        "domain": "contabil.com.br",
+        "verified": False,
+        "what_it_does": None,
+        "public_sector_evidence": None,
+    }
+    assert client.get("/companies/22222222").json()["website"] is None  # never checked

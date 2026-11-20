@@ -67,6 +67,16 @@ class Contracts(BaseModel):
     last_published: date | None
 
 
+class Website(BaseModel):
+    url: str | None  # the page that was read, after redirects
+    domain: str  # from the e-mail the company registered
+    verified: bool  # the LLM found it is the company's (or its group's) own site
+    what_it_does: str | None  # only for verified sites
+    # Only the quote, never a yes/no badge: on the test set a "sells to government" answer
+    # was right 1 time in 4, so the person judges the evidence themselves.
+    public_sector_evidence: str | None
+
+
 class CompanyDetail(Company):
     opened_on: date | None
     capital: float
@@ -79,6 +89,7 @@ class CompanyDetail(Company):
     secondary_activities: int
     public_contracts: Contracts  # won in the loaded PNCP period
     reasons: list[Reason] | None  # largest effect first; none for non-linear models
+    website: Website | None  # None when the site was not checked (outside the top companies)
 
 
 DETAIL = """
@@ -94,6 +105,14 @@ join company c using (cnpj_basico)
 join establishment e using (cnpj_basico)
 where s.cnpj_basico = %(cnpj)s
 group by c.cnpj_basico, s.cnpj_basico
+"""
+
+WEBSITE = """
+select url, domain, is_company_site = 'yes' as verified,
+       case when is_company_site = 'yes' then nullif(what_it_does, '') end as what_it_does,
+       case when is_company_site = 'yes' and public_sector = 'yes' then nullif(evidence, '') end
+           as public_sector_evidence
+from site_check where cnpj_basico = %(cnpj)s
 """
 
 CONTRACTS = """
@@ -271,6 +290,7 @@ def create_app(database_url: str | None = None, web_origins: list[str] | None = 
             **detail,
             "main_activity_name": name["description"] if name else None,
             "public_contracts": conn.execute(CONTRACTS, params).fetchone(),
+            "website": conn.execute(WEBSITE, params).fetchone(),
             "reasons": None
             if reasons is None
             else [
