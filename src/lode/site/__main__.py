@@ -2,6 +2,7 @@
 
 uv run python -m lode.site label     # label the evaluation sample by hand (resumable)
 uv run python -m lode.site eval      # LLM vs hand labels vs a simple rule, on the dev split
+uv run python -m lode.site run       # check the top companies' sites and store the answers
 """
 
 import argparse
@@ -16,6 +17,7 @@ import httpx
 import psycopg
 from dotenv import load_dotenv
 
+from lode.etl.load import SCHEMA
 from lode.site import evaluate as E
 from lode.site import labels as L
 from lode.site.candidates import Candidate, candidates
@@ -188,6 +190,48 @@ def run_eval(args: argparse.Namespace) -> None:
         )
 
 
+SITE_COLUMNS = (
+    "cnpj_basico domain url readable page_company is_company_site public_sector what_it_does "
+    "evidence model prompt_version"
+).split()
+
+
+def run_checks(args: argparse.Namespace) -> None:
+    """Check every top company with a candidate domain, then store all answers at once.
+
+    Pages and LLM answers are cached on disk, so a run stopped by a rate limit, a sleeping
+    laptop or Ctrl+C resumes where it stopped and costs nothing for the companies already done.
+    """
+    with connect() as conn:
+        found = candidates(conn, args.top)
+    chain = endpoints_from_env()
+    version = E.prompt_version()
+    rows, failed = [], 0
+    with client() as http, httpx.Client(timeout=30) as api:
+        for i, company in enumerate(found, start=1):
+            page = cached(CACHE, http, company.domain)
+            try:
+                a = llm_answer(api, chain, company, page)
+            except NoModelAnswered:
+                failed += 1  # every model refused right now: left for the next run
+                continue
+            rows.append(
+                (company.cnpj_basico, company.domain, page.url, readable(page),
+                 a.get("page_company", ""), a["is_company_site"], a["public_sector"],
+                 a["what_it_does"], a["evidence"], a["model"], version)
+            )  # fmt: skip
+            if i % 50 == 0:
+                print(f"[{i}/{len(found)}] checked, {failed} left for a later run", flush=True)
+    with connect() as conn, conn.transaction(), conn.cursor() as cur:
+        cur.execute(SCHEMA.read_text())
+        cur.execute("truncate site_check")
+        with cur.copy(f"copy site_check ({', '.join(SITE_COLUMNS)}) from stdin") as copy:
+            for row in rows:
+                copy.write_row(row)
+    verified = sum(r[5] == "yes" for r in rows)
+    print(f"stored {len(rows)} checks ({verified} verified sites); {failed} left for a later run")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="lode.site", description="Website check with an LLM.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -199,6 +243,9 @@ def main() -> None:
     evaluation.add_argument("--labels", type=Path, default=LABELS)
     evaluation.add_argument("--model", help="evaluate one model alone, without fallback")
     evaluation.set_defaults(run=run_eval)
+    batch = sub.add_parser("run", help="check the top companies and store the answers")
+    batch.add_argument("--top", type=int, default=TOP)
+    batch.set_defaults(run=run_checks)
     args = parser.parse_args()
     args.run(args)
 

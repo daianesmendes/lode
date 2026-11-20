@@ -129,3 +129,21 @@ create extension if not exists pg_trgm;
 create index if not exists company_name_search on company using gin (legal_name gin_trgm_ops);
 create index if not exists company_score_name_search
     on company_score using gin (trade_name gin_trgm_ops);
+
+-- What the LLM found on each top company's website (python -m lode.site run). The API shows
+-- the site as verified only when is_company_site = 'yes', and the public-sector signal only
+-- with its evidence quote, since on the test set a "yes" there was right only 1 time in 4.
+create table if not exists site_check (
+    cnpj_basico      char(8) primary key,
+    domain           text not null,
+    url              text,                  -- final address after redirects
+    readable         boolean not null,      -- false: down, empty or a bot wall
+    page_company     text,
+    is_company_site  text not null,         -- yes / no / unclear
+    public_sector    text not null,         -- yes / no / unclear
+    what_it_does     text,
+    evidence         text,
+    model            text not null,         -- 'none' when the page was unreadable
+    prompt_version   text not null,
+    checked_at       timestamptz not null default now()
+);
