@@ -31,7 +31,7 @@ build-backend = "uv_build"
 
 [tool.vercel]
 # the API, deployed as one Vercel function (the web app is a separate project in web/)
-entrypoint = "lode.api.app:app"
+entrypoint = "src.lode.api.app:app"  # a path from the repo root, not an import path
 
 [tool.ruff]
 line-length = 100
