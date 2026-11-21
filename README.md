@@ -23,8 +23,9 @@ The first version focuses on **software and IT services companies (CNAE 62) in S
    Uploading your own customer list to find lookalikes is planned.
 3. **API** (FastAPI) — serves the map, filters and rankings. Scores are computed during the
    load, so the API stays light.
-4. **LLM check** (next; Gemini, with Groq as fallback) — verifies a company's website and
-   suggests an opening message, evaluated against a hand-labeled set.
+4. **LLM check** (gpt-oss on Groq, with Gemini as fallback) — reads the home page of each top
+   company's website and says whether it is really the company's site and what it does,
+   evaluated against a hand-labeled set.
 5. **Web app** (Next.js) — the map and the prospect list.
 
 ## Roadmap
@@ -35,7 +36,7 @@ The first version focuses on **software and IT services companies (CNAE 62) in S
 - [x] Scoring model with held-out evaluation
 - [x] API
 - [x] Web app: map, filters, top 10
-- [ ] LLM website check + evaluation set
+- [x] LLM website check + evaluation set
 - [ ] Deploy (Supabase + Vercel)
 
 ## Data
@@ -240,6 +241,59 @@ Choices worth explaining:
 - **The map draws in a web worker.** MapLibre 6 looks for its worker next to its own bundle,
   where Next.js does not put it; `npm run worker` copies it to `public/` before `dev` and
   `build`.
+
+## LLM website check
+
+The Receita has no website field, only the e-mail each company registered. For the top-ranked
+companies, Lode takes the e-mail's domain (skipping free providers like gmail.com), reads the
+home page, and asks an LLM three things: is this the company's own site, what does the company
+do, and does the page mention public-sector clients. The answer shows in the company panel.
+
+**Why an LLM and not a rule.** A domain is often not the company's: accounting firms register
+their own e-mail for their clients (one domain is shared by 36 thousand companies), and some
+domains redirect to another business. A simple rule — *unreadable page → unclear; domain shared
+by 5 or more companies → no; otherwise yes* — is the baseline the LLM has to beat.
+
+**How it was measured.** 100 companies drawn from the top of the ranking, labeled by hand in a
+terminal tool (`python -m lode.site label`): 30 for development, 70 for a test set run only
+once, at the end. Pages behind a bot wall are set apart, since no model can read them: 57 of
+the 70 test pages were readable.
+
+| Test set (57 readable pages) | Is it the company's site? | Mentions public clients? |
+| --- | ---: | ---: |
+| Rule baseline | 68% | 67% |
+| LLM chain as run (gpt-oss, Gemini when rate-limited) | **77%** | 75% |
+| gpt-oss 120B alone | 75% | **77%** |
+
+What these numbers taught:
+
+- **Development scores were too optimistic.** On the 30 development companies gpt-oss reached
+  91% on both questions; on the test set, 75–77%. The rules in the prompt were written while
+  looking at development mistakes, so they fit those cases best. That is why the test set was
+  kept aside and run once.
+- **Labels needed rules too.** The first comparison had the LLM *below* the rule (67% vs 73%).
+  Reviewing the disagreements showed my own labels were inconsistent, so the same written
+  guidelines (`src/lode/site/guidelines.py`) now feed both the labeling tool and the prompt:
+  a different company name counts as "not the site" only when the page shows it, and "public
+  clients" needs the page to name them, not a guess from the field.
+- **A "yes" on websites is trustworthy; on public clients it is not.** When gpt-oss said a site
+  was the company's, it was right 92% of the time. When it said the company sells to
+  government, it was right 1 time in 4. So the app shows a verified site with confidence, but
+  for the public sector it shows only the quote from the page, with a warning, and no yes/no
+  badge or filter.
+- **The page is untrusted input.** The prompt treats the page text as data, never
+  instructions, and asks for the name on the page first, before any verdict.
+
+**Running it.** Free tiers only: models are tried in order, and one that hits its rate limit
+rests for five minutes at the back of the line. Pages and answers are cached, so a stopped run
+resumes where it left off.
+
+```bash
+uv run python -m lode.site eval --split dev            # compare the LLM with the rule baseline
+uv run python -m lode.site run --top 2000              # check the top companies' sites
+```
+
+Of the top 2,000 companies, 1,775 have an e-mail domain worth checking (the rest use free providers or none).
 
 ## Development
 
