@@ -258,3 +258,10 @@ def test_company_detail_shows_the_checked_website(db, client):
         "public_sector_evidence": None,
     }
     assert client.get("/companies/22222222").json()["website"] is None  # never checked
+
+
+def test_answers_may_be_cached_but_health_may_not(db, client):
+    load_companies(db)
+    assert "s-maxage" in client.get("/companies").headers["cache-control"]
+    assert "cache-control" not in client.get("/health").headers
+    assert "cache-control" not in client.get("/companies/99999999").headers  # errors are not

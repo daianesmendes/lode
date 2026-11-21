@@ -29,6 +29,10 @@ dev = [
 requires = ["uv_build>=0.12.20,<0.13.0"]
 build-backend = "uv_build"
 
+[tool.vercel]
+# the API, deployed as one Vercel function (the web app is a separate project in web/)
+entrypoint = "lode.api.app:app"
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

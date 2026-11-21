@@ -187,7 +187,10 @@ def create_app(database_url: str | None = None, web_origins: list[str] | None = 
         if url is None:
             load_dotenv()
             url = os.environ["DATABASE_URL"]
-        with ConnectionPool(url, kwargs={"row_factory": dict_row}) as pool:
+        # Small pool: on Vercel each instance is short-lived and Supabase's free plan caps
+        # connections. No prepared statements, so the pooler's transaction mode works too.
+        kwargs = {"row_factory": dict_row, "prepare_threshold": None}
+        with ConnectionPool(url, min_size=1, max_size=4, kwargs=kwargs) as pool:
             app.state.pool = pool
             yield
 
@@ -202,6 +205,16 @@ def create_app(database_url: str | None = None, web_origins: list[str] | None = 
         load_dotenv()
         web_origins = os.environ.get("LODE_WEB_ORIGINS", "http://localhost:3000").split(",")
     app.add_middleware(CORSMiddleware, allow_origins=web_origins, allow_methods=["GET"])
+
+    @app.middleware("http")
+    async def cache(request: Request, call_next):
+        """The data only changes when it is reloaded (monthly), so a CDN in front of the API
+        (Vercel's) may keep answers for a day instead of asking Postgres again."""
+        response = await call_next(request)
+        cacheable = request.method == "GET" and request.url.path != "/health"
+        if cacheable and response.status_code == 200:
+            response.headers["Cache-Control"] = "public, max-age=300, s-maxage=86400"
+        return response
 
     def connection(request: Request) -> Iterator[psycopg.Connection]:
         with request.app.state.pool.connection() as conn:
