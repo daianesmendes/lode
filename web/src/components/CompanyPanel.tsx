@@ -85,6 +85,8 @@ function Detail({ d, t }: { d: CompanyDetail; t: Translator }) {
         </div>
       </div>
 
+      {d.website && <Website site={d.website} t={t} />}
+
       <section>
         <h3 className="mb-1 text-sm font-medium">{t.t("whyTitle")}</h3>
         <p className="mb-3 text-xs text-muted">{t.t("whyHint")}</p>
@@ -142,5 +144,34 @@ function Reasons({ reasons, t }: { reasons: { feature: string; contribution: num
         );
       })}
     </ul>
+  );
+}
+
+function Website({ site, t }: { site: NonNullable<CompanyDetail["website"]>; t: Translator }) {
+  return (
+    <section>
+      <h3 className="mb-1 text-sm font-medium">{t.t("website")}</h3>
+      {site.verified && site.url ? (
+        <div className="space-y-2 text-sm">
+          <p>
+            <span className="font-medium text-up">✓ {t.t("siteVerified")}</span> ·{" "}
+            <a className="underline underline-offset-2" href={site.url} target="_blank" rel="noreferrer">
+              {new URL(site.url).hostname.replace(/^www\./, "")}
+            </a>
+          </p>
+          {site.what_it_does && <p>{site.what_it_does}</p>}
+          {site.public_sector_evidence && (
+            <blockquote className="rounded-md border border-line bg-subtle p-2 text-xs">
+              <span className="text-muted">{t.t("publicEvidence")}</span> “
+              {site.public_sector_evidence.replace(/^["“'\s]+|["”'\s]+$/g, "")}”
+              <span className="mt-1 block text-muted">{t.t("checkYourself")}</span>
+            </blockquote>
+          )}
+        </div>
+      ) : (
+        <p className="text-sm text-muted">{t.t("siteNotVerified")}</p>
+      )}
+      <p className="mt-1 text-xs text-muted">{t.t("siteChecked")}</p>
+    </section>
   );
 }

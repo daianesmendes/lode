@@ -39,6 +39,12 @@ const en = {
   whyTitle: "Why this score",
   whyHint: "What raises (green) or lowers (red) the chance, compared with the average company",
   noReasons: "This model does not explain individual scores.",
+  website: "Website",
+  siteVerified: "Website verified",
+  siteNotVerified: "We could not confirm this company's website.",
+  siteChecked: "Checked by an LLM from the domain of the registered e-mail.",
+  publicEvidence: "The site mentions public clients:",
+  checkYourself: "Check it yourself: this signal is often wrong.",
   // footer
   howTitle: "How it works",
   howText:
@@ -86,6 +92,12 @@ const pt: Record<Keys, string> = {
   whyTitle: "Por que essa nota",
   whyHint: "O que aumenta (verde) ou diminui (vermelho) a chance, em relação à empresa média",
   noReasons: "Este modelo não explica notas individuais.",
+  website: "Site",
+  siteVerified: "Site verificado",
+  siteNotVerified: "Não conseguimos confirmar o site desta empresa.",
+  siteChecked: "Conferido por um LLM a partir do domínio do e-mail cadastrado.",
+  publicEvidence: "O site menciona clientes públicos:",
+  checkYourself: "Vale conferir: esse sinal costuma errar.",
   howTitle: "Como funciona",
   howText:
     "Uma regressão logística treinada com dados públicos: o cadastro de empresas da Receita Federal e os contratos publicados no PNCP. Ela olhou cada empresa em 1º de novembro de 2025 e aprendeu quais ganharam contrato no ano seguinte.",

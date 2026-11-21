@@ -47,6 +47,13 @@ export type CompanyDetail = Company & {
   secondary_activities: number;
   public_contracts: { count: number; total_value: number | null; last_published: string | null };
   reasons: { feature: string; contribution: number }[] | null;
+  website: {
+    url: string | null;
+    domain: string;
+    verified: boolean;
+    what_it_does: string | null;
+    public_sector_evidence: string | null;
+  } | null;
 };
 
 export type Municipality = {
