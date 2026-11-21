@@ -2,7 +2,8 @@
 
 **Lode finds the companies most likely to buy, in a haystack of millions of public CNPJ records.**
 
-> 🚧 Work in progress — see the [roadmap](#roadmap).
+**Live demo: [lode-9b94.vercel.app](https://lode-9b94.vercel.app)** · API docs:
+[lode-api.vercel.app/docs](https://lode-api.vercel.app/docs)
 
 Sales teams that sell to other businesses usually pay for lead databases. Brazil publishes
 much of that data for free: every registered company (Receita Federal), every public contract
@@ -37,7 +38,7 @@ The first version focuses on **software and IT services companies (CNAE 62) in S
 - [x] API
 - [x] Web app: map, filters, top 10
 - [x] LLM website check + evaluation set
-- [ ] Deploy (Supabase + Vercel)
+- [x] Deploy (Supabase + Vercel)
 
 ## Data
 
@@ -293,7 +294,32 @@ uv run python -m lode.site eval --split dev            # compare the LLM with th
 uv run python -m lode.site run --top 2000              # check the top companies' sites
 ```
 
-Of the top 2,000 companies, 1,775 have an e-mail domain worth checking (the rest use free providers or none).
+Of the top 2,000 companies, 1,775 have an e-mail domain worth checking (the rest use free
+providers or none). 1,627 have been checked so far (the rest wait for the free tiers' daily
+limits): 981 sites were verified as the company's own, and 226 of those mention public clients.
+
+## Deploy
+
+The live demo runs on free plans: Postgres on [Supabase](https://supabase.com/), and the API
+and the web app as two [Vercel](https://vercel.com/) projects from this repository (the API
+from the root, the web app from `web/`).
+
+- **Only what the site shows goes to the cloud.** The database is copied from the local one
+  without addresses, phones or e-mails, so they cannot leak from there either.
+- **Supabase's automatic API is locked.** Supabase exposes every table through a public key by
+  default; every table has row-level security on and no policies, so that key reads nothing.
+  Only Lode's API, which connects with the database password, can read the data.
+- **Built for short-lived functions.** On Vercel the API starts and stops often, so it keeps a
+  pool of at most 4 connections, through Supabase's pooler in transaction mode (which means no
+  prepared statements), and runs in Cleveland, next to the database in Ohio.
+- **Cached at the edge.** The data only changes when it is reloaded, so the API lets Vercel's
+  CDN keep each answer for a day: the first request for the full list takes about 3 s from the
+  free database, the next ones about 60 ms.
+- **Only the web app may call it from a browser** (CORS): the allowed sites come from
+  `LODE_WEB_ORIGINS`.
+
+Settings: `DATABASE_URL` (Supabase's transaction pooler, port 6543) and `LODE_WEB_ORIGINS` on
+the API project; `NEXT_PUBLIC_API_URL` on the web project.
 
 ## Development
 
