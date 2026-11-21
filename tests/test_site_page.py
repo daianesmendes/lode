@@ -68,3 +68,9 @@ def test_free_and_fake_domains_are_not_candidates():
     assert not usable("gmail.com")
     assert not usable("xxxxx.xxx.xx")
     assert not usable("not a domain")
+
+
+def test_nul_bytes_from_a_page_are_dropped_before_storing():
+    from lode.site.__main__ import no_nul
+
+    assert no_nul(("12345678", "a\x00b", None, True)) == ("12345678", "ab", None, True)

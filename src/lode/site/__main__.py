@@ -196,6 +196,11 @@ SITE_COLUMNS = (
 ).split()
 
 
+def no_nul(row: tuple) -> tuple:
+    """Postgres text cannot hold NUL bytes, and a page (or the quote taken from it) may."""
+    return tuple(v.replace("\x00", "") if isinstance(v, str) else v for v in row)
+
+
 def run_checks(args: argparse.Namespace) -> None:
     """Check every top company with a candidate domain, then store all answers at once.
 
@@ -215,11 +220,11 @@ def run_checks(args: argparse.Namespace) -> None:
             except NoModelAnswered:
                 failed += 1  # every model refused right now: left for the next run
                 continue
-            rows.append(
+            rows.append(no_nul(
                 (company.cnpj_basico, company.domain, page.url, readable(page),
                  a.get("page_company", ""), a["is_company_site"], a["public_sector"],
                  a["what_it_does"], a["evidence"], a["model"], version)
-            )  # fmt: skip
+            ))  # fmt: skip
             if i % 50 == 0:
                 print(f"[{i}/{len(found)}] checked, {failed} left for a later run", flush=True)
     with connect() as conn, conn.transaction(), conn.cursor() as cur:
