@@ -295,8 +295,8 @@ uv run python -m lode.site run --top 2000              # check the top companies
 ```
 
 Of the top 2,000 companies, 1,775 have an e-mail domain worth checking (the rest use free
-providers or none). 1,627 have been checked so far (the rest wait for the free tiers' daily
-limits): 981 sites were verified as the company's own, and 226 of those mention public clients.
+providers or none). All 1,775 were checked: 1,092 sites were verified as the company's own, and
+241 of those mention public clients.
 
 ## Deploy
 
