@@ -136,19 +136,20 @@ class Municipality(BaseModel):
     best_score: float
 
 
+# Reads city_score, summed per city and size at scoring time (see lode.model.score).
 MUNICIPALITIES = """
-select s.municipality_code, mi.ibge_code, coalesce(mi.name, mu.name) as municipality,
-       count(*) as companies,
-       avg(s.score) as mean_score, sum(s.score) as expected_winners,
-       (array_agg(s.cnpj_basico order by s.rank))[1] as best_cnpj_basico,
-       (array_agg(c.legal_name order by s.rank))[1] as best_legal_name,
-       max(s.score) as best_score
-from company_score s
-join company c using (cnpj_basico)
-left join municipality mu on mu.code = s.municipality_code
-left join municipality_ibge mi on mi.code = s.municipality_code
+select g.municipality_code, mi.ibge_code, coalesce(mi.name, mu.name) as municipality,
+       sum(g.companies) as companies,
+       sum(g.expected_winners) / sum(g.companies) as mean_score,
+       sum(g.expected_winners) as expected_winners,
+       (array_agg(g.best_cnpj_basico order by g.best_rank))[1] as best_cnpj_basico,
+       (array_agg(g.best_legal_name order by g.best_rank))[1] as best_legal_name,
+       max(g.best_score) as best_score
+from city_score g
+left join municipality mu on mu.code = g.municipality_code
+left join municipality_ibge mi on mi.code = g.municipality_code
 {where}
-group by s.municipality_code, mi.ibge_code, mi.name, mu.name
+group by g.municipality_code, mi.ibge_code, mi.name, mu.name
 order by expected_winners desc
 """
 
@@ -213,7 +214,10 @@ def create_app(database_url: str | None = None, web_origins: list[str] | None = 
         response = await call_next(request)
         cacheable = request.method == "GET" and request.url.path != "/health"
         if cacheable and response.status_code == 200:
-            response.headers["Cache-Control"] = "public, max-age=300, s-maxage=86400"
+            # after a day the CDN still answers with its copy at once and refreshes it behind
+            response.headers["Cache-Control"] = (
+                "public, max-age=300, s-maxage=86400, stale-while-revalidate=604800"
+            )
         return response
 
     def connection(request: Request) -> Iterator[psycopg.Connection]:
@@ -318,7 +322,7 @@ def create_app(database_url: str | None = None, web_origins: list[str] | None = 
         if size is None:
             return conn.execute(MUNICIPALITIES.format(where="")).fetchall()
         code = next(code for code, name in SIZES.items() if name == size)
-        query = MUNICIPALITIES.format(where="where c.size_code = %(size)s")
+        query = MUNICIPALITIES.format(where="where g.size_code = %(size)s")
         return conn.execute(query, {"size": code}).fetchall()
 
     return app

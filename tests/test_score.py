@@ -87,6 +87,11 @@ def test_score_ranks_companies_and_explains_the_logistic(conn):  # noqa: F811
 
     places = conn.execute("select municipality_code from company_score").fetchall()
     assert places == [("7107",)] * 3
+    city = conn.execute("select sum(companies), sum(expected_winners) from city_score").fetchone()
+    assert city[0] == 3
+    assert city[1] == pytest.approx(
+        conn.execute("select sum(score) from company_score").fetchone()[0]
+    )
 
     info = conn.execute("select model_version, model, companies, metrics from score_info")
     assert info.fetchone() == ("abc123", "LogisticRegression", 3, {"pr_auc": 0.2})

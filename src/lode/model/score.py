@@ -29,6 +29,20 @@ from (
 where m.cnpj_basico = s.cnpj_basico
 """
 
+# Per city and size, so the map's size filter needs no per-company work either.
+CITY_SCORES = """
+truncate city_score;
+insert into city_score
+select s.municipality_code, c.size_code, count(*), sum(s.score),
+       min(s.rank),
+       (array_agg(s.cnpj_basico order by s.rank))[1],
+       (array_agg(c.legal_name order by s.rank))[1],
+       max(s.score)
+from company_score s
+join company c using (cnpj_basico)
+group by s.municipality_code, c.size_code
+"""
+
 
 def cutoff_for(conn: psycopg.Connection) -> date:
     """First day after the month of the loaded Receita snapshot ("2026-10" -> 2026-11-01)."""
@@ -86,6 +100,7 @@ def score(
             ):
                 copy.write_row((cnpj, float(p), int(rank), json.dumps(why) if why else None))
         cur.execute(MAIN_ESTABLISHMENT)
+        cur.execute(CITY_SCORES)
         cur.execute(
             "insert into score_info (cutoff, model_version, model, companies, metrics) "
             "values (%s, %s, %s, %s, %s)",

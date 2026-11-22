@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from lode.api.app import create_app
 from lode.etl.load import SCHEMA
-from lode.model.score import MAIN_ESTABLISHMENT
+from lode.model.score import CITY_SCORES, MAIN_ESTABLISHMENT
 
 URL = os.environ.get("TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")
@@ -34,8 +34,8 @@ def db():
     with psycopg.connect(URL, autocommit=True) as conn:
         conn.execute(SCHEMA.read_text())
         conn.execute(
-            "truncate site_check, company_score, score_info, public_contract, pncp_info, "
-            "establishment, company, municipality, municipality_ibge, cnae, load_info"
+            "truncate site_check, company_score, city_score, score_info, public_contract, "
+            "pncp_info, establishment, company, municipality, municipality_ibge, cnae, load_info"
         )
         yield conn
 
@@ -128,6 +128,7 @@ def load_companies(conn):
         "('22222222', 0.01, 3, '{\"capital\": -1.0}')"
     )
     conn.execute(MAIN_ESTABLISHMENT)  # as the score command does
+    conn.execute(CITY_SCORES)
 
 
 def test_companies_come_by_rank_without_contact_data(db, client):
@@ -262,6 +263,7 @@ def test_company_detail_shows_the_checked_website(db, client):
 
 def test_answers_may_be_cached_but_health_may_not(db, client):
     load_companies(db)
-    assert "s-maxage" in client.get("/companies").headers["cache-control"]
+    cache = client.get("/companies").headers["cache-control"]
+    assert "s-maxage" in cache and "stale-while-revalidate" in cache
     assert "cache-control" not in client.get("/health").headers
     assert "cache-control" not in client.get("/companies/99999999").headers  # errors are not

@@ -113,6 +113,19 @@ alter table company_score add column if not exists municipality_code char(4);
 create index if not exists company_score_rank on company_score (rank);
 create index if not exists company_score_place on company_score (municipality_code, rank);
 
+-- Scores summed per city and company size, also at scoring time: the map needs every city on
+-- each page load, and summing 133k companies per request took seconds on the hosted database.
+create table if not exists city_score (
+    municipality_code  char(4),
+    size_code          char(2) not null,
+    companies          integer not null,
+    expected_winners   double precision not null,  -- sum of the scores
+    best_rank          integer not null,
+    best_cnpj_basico   char(8) not null,
+    best_legal_name    text not null,
+    best_score         double precision not null
+);
+
 create table if not exists score_info (
     id             boolean primary key default true check (id),  -- single row
     cutoff         date not null,
